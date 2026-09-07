@@ -1,0 +1,55 @@
+{
+  "tag": "v0.6.1",
+  "releaseUrl": "https://github.com/tinyrange/vmsh/releases/tag/v0.6.1",
+  "checksums": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/checksums.txt",
+  "assets": [
+    {
+      "product": "NeurodeskAppX",
+      "name": "NeurodeskAppX_v0.6.1_darwin_arm64.zip",
+      "platform": "macOS",
+      "arch": "Apple silicon",
+      "size": 28040465,
+      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/NeurodeskAppX_v0.6.1_darwin_arm64.zip"
+    },
+    {
+      "product": "NeurodeskAppX",
+      "name": "NeurodeskAppX_v0.6.1_windows_amd64.exe",
+      "platform": "Windows",
+      "arch": "x64",
+      "size": 50891776,
+      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/NeurodeskAppX_v0.6.1_windows_amd64.exe"
+    },
+    {
+      "product": "NeurodeskAppX",
+      "name": "NeurodeskAppX_v0.6.1_linux_amd64",
+      "platform": "Linux",
+      "arch": "x64",
+      "size": 50570146,
+      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/NeurodeskAppX_v0.6.1_linux_amd64"
+    },
+    {
+      "product": "SquadVM",
+      "name": "SquadVM_v0.6.1_darwin_arm64.zip",
+      "platform": "macOS",
+      "arch": "Apple silicon",
+      "size": 31569686,
+      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/SquadVM_v0.6.1_darwin_arm64.zip"
+    },
+    {
+      "product": "SquadVM",
+      "name": "SquadVM_v0.6.1_windows_amd64.exe",
+      "platform": "Windows",
+      "arch": "x64",
+      "size": 53019136,
+      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/SquadVM_v0.6.1_windows_amd64.exe"
+    },
+    {
+      "product": "SquadVM",
+      "name": "SquadVM_v0.6.1_linux_amd64",
+      "platform": "Linux",
+      "arch": "x64",
+      "size": 52619756,
+      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/SquadVM_v0.6.1_linux_amd64"
+    }
+  ]
+}
