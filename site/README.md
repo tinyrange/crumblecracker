@@ -2,7 +2,7 @@
 
 The downloads page for NeurodeskAppX and SquadVM.
 
-The existing GitHub Pages address remains `/vmsh/` until the repository is renamed.
+The published Pages site is at `https://tinyrange.github.io/crumblecracker/`.
 
 ## Local development
 

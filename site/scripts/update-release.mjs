@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
-const repository = "tinyrange/vmsh";
+const repository = "tinyrange/crumblecracker";
 const apiUrl = `https://api.github.com/repos/${repository}/releases/latest`;
 const outputUrl = new URL("../app/release-data.json", import.meta.url);
 const token = process.env.GITHUB_TOKEN;

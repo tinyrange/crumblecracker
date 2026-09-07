@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://tinyrange.github.io/vmsh/"),
+  metadataBase: new URL("https://tinyrange.github.io/crumblecracker/"),
   title: "CrumbleCracker — Desktop virtual machines",
   description:
     "Download NeurodeskAppX and SquadVM for macOS, Windows, and Linux.",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    url: "https://tinyrange.github.io/vmsh/",
+    url: "https://tinyrange.github.io/crumblecracker/",
     title: "CrumbleCracker — Your lab, ready to run.",
     description:
       "Download NeurodeskAppX and SquadVM for macOS, Windows, and Linux.",

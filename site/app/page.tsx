@@ -132,7 +132,7 @@ export default function Home() {
           <a href="#apps">Apps</a>
           <a
             className="github-link"
-            href="https://github.com/tinyrange/vmsh"
+            href="https://github.com/tinyrange/crumblecracker"
           >
             GitHub <span aria-hidden="true">↗</span>
           </a>

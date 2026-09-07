@@ -54,7 +54,7 @@ test("release data contains only the desktop products", () => {
   );
 
   for (const asset of release.assets) {
-    assert.ok(asset.url.startsWith("https://github.com/tinyrange/vmsh/releases/"));
+    assert.ok(asset.url.startsWith("https://github.com/tinyrange/crumblecracker/releases/"));
     assert.ok(asset.size > 0);
   }
 });

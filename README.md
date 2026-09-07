@@ -2,9 +2,8 @@
 
 The in-process Linux VM runtime behind SquadVM and NeurodeskAppX.
 
-The production repository currently lives at `tinyrange/vmsh`; its rename to
-CrumbleCracker is separate from this source split. The release feed stays on
-`tinyrange/vmsh` until that rename.
+Desktop downloads and releases are available from
+[tinyrange/crumblecracker](https://github.com/tinyrange/crumblecracker).
 
 This is an independent production codebase, condensed from cc. It contains the
 two desktop apps, their shared frontend, and the runtime needed to boot Linux

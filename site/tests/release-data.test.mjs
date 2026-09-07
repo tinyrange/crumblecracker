@@ -19,11 +19,11 @@ for (const includeShell of [false, true]) {
     const products = ["NeurodeskAppX", "SquadVM", ...(includeShell ? ["vmsh"] : [])];
     const latest = {
       tag_name: "v1.0.0",
-      html_url: "https://github.com/tinyrange/vmsh/releases/tag/v1.0.0",
+      html_url: "https://github.com/tinyrange/crumblecracker/releases/tag/v1.0.0",
       assets: products.map((product) => ({
         name: `${product}_v1.0.0_linux_amd64`,
         size: 1024,
-        browser_download_url: `https://github.com/tinyrange/vmsh/releases/download/v1.0.0/${product}_v1.0.0_linux_amd64`,
+        browser_download_url: `https://github.com/tinyrange/crumblecracker/releases/download/v1.0.0/${product}_v1.0.0_linux_amd64`,
       })),
     };
     const preload = `globalThis.fetch = async () => Response.json(${JSON.stringify(latest)});`;
