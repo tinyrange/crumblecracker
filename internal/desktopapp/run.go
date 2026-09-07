@@ -19,8 +19,8 @@ import (
 	"syscall"
 	"time"
 
-	"j5.nz/cc/client"
-	ccdisplay "j5.nz/cc/display"
+	ccdisplay "github.com/tinyrange/crumblecracker/internal/display"
+	"github.com/tinyrange/crumblecracker/internal/protocol"
 )
 
 // Run starts a configured desktop application.
@@ -690,12 +690,6 @@ func Run(config Config, args []string) (retErr error) {
 		case <-lifetimeContext.Done():
 			fmt.Fprintf(os.Stderr, "Stopping %s VM...\n", productName())
 			return nil
-		case err := <-backend.done:
-			backend.finished = true
-			if err == nil {
-				return fmt.Errorf("embedded VM backend stopped unexpectedly")
-			}
-			return fmt.Errorf("embedded VM backend stopped: %w", err)
 		case <-statusTicker.C:
 			current, err := api.InstanceStatusOfContext(lifetimeContext, *name)
 			if err != nil {
@@ -719,7 +713,7 @@ func Run(config Config, args []string) (retErr error) {
 	}
 }
 
-func runGuestRootScript(ctx context.Context, api *client.Client, name, script string) error {
+func runGuestRootScript(ctx context.Context, api desktopRuntime, name, script string) error {
 	exitCode := -1
 	err := api.RunStreamInContext(ctx, name, client.RunRequest{
 		Command: []string{"/bin/sh", "-eu", "-c", script},
@@ -739,7 +733,7 @@ func runGuestRootScript(ctx context.Context, api *client.Client, name, script st
 	return nil
 }
 
-func monitorDisplayVM(ctx context.Context, api *client.Client, name string) error {
+func monitorDisplayVM(ctx context.Context, api desktopRuntime, name string) error {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
@@ -769,7 +763,7 @@ func monitorDisplayVM(ctx context.Context, api *client.Client, name string) erro
 	}
 }
 
-func prepareAppImage(ctx context.Context, api *client.Client, source string, refresh bool, publish func(startupProgress)) (string, error) {
+func prepareAppImage(ctx context.Context, api desktopRuntime, source string, refresh bool, publish func(startupProgress)) (string, error) {
 	source = strings.TrimSpace(source)
 	if !isRegistryImageReference(source) {
 		if publish != nil {
@@ -837,7 +831,7 @@ func pulledImageName(source, architecture string) string {
 	return fmt.Sprintf("%s/%s-%s-%x", appConfig.ImageNamespace, name, architecture, sum[:6])
 }
 
-func waitForDesktop(ctx context.Context, api *client.Client, name string) error {
+func waitForDesktop(ctx context.Context, api desktopRuntime, name string) error {
 	readinessScript := appConfig.DesktopReadiness
 	if strings.TrimSpace(readinessScript) == "" {
 		readinessScript = `
@@ -872,7 +866,7 @@ exit 1
 	return nil
 }
 
-func waitForDisplayReady(ctx context.Context, api *client.Client, name string, session ccdisplay.Session, accelerated bool) error {
+func waitForDisplayReady(ctx context.Context, api desktopRuntime, name string, session ccdisplay.Session, accelerated bool) error {
 	if !accelerated {
 		return waitForDesktop(ctx, api, name)
 	}
@@ -952,7 +946,7 @@ func mapPersistentHomeOwner(mounts []client.PersistentMount, owner *GuestOwner) 
 	mounts[0].OwnerGID = owner.GID
 }
 
-func runConfiguredAppPreflight(ctx context.Context, api *client.Client, source, cacheDir string, cvmfs *CVMFSHostMountConfig) (startupPreflight, error) {
+func runConfiguredAppPreflight(ctx context.Context, api desktopRuntime, source, cacheDir string, cvmfs *CVMFSHostMountConfig) (startupPreflight, error) {
 	result, err := runAppPreflight(ctx, api, source, cacheDir)
 	if err != nil || cvmfs == nil {
 		return result, err
@@ -985,7 +979,7 @@ func runConfiguredAppPreflight(ctx context.Context, api *client.Client, source, 
 	return result, nil
 }
 
-func probeConfiguredCVMFS(ctx context.Context, api *client.Client, cvmfs *CVMFSHostMountConfig) (client.CVMFSMirrorProbeResponse, error) {
+func probeConfiguredCVMFS(ctx context.Context, api desktopRuntime, cvmfs *CVMFSHostMountConfig) (client.CVMFSMirrorProbeResponse, error) {
 	if cvmfs == nil {
 		return client.CVMFSMirrorProbeResponse{}, fmt.Errorf("CVMFS host mount is not configured")
 	}

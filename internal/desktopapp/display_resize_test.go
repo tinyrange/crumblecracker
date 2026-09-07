@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tinyrange/crumblecracker/internal/display"
 	"github.com/tinyrange/gowin/gl"
 	"github.com/tinyrange/gowin/window"
-	"j5.nz/cc/display"
 )
 
 type resizeTestWindow struct {

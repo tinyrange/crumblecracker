@@ -1,370 +1,67 @@
-# vmsh
+# CrumbleCracker
 
-`vmsh` is an interactive shell for running commands across host, VM, and SSH
-systems from one prompt. A normal shell keeps context as "the current working
-directory." `vmsh` extends that idea: the current context is both the selected
-system and that system's working directory. Ordinary command lines run in that
-context, and `@` control lines change the selected system or ask `vmsh` to do
-something directly.
+The in-process Linux VM runtime behind SquadVM and NeurodeskAppX.
 
-`vmsh` is a product shell around the `ccvm` daemon: OCI images become selectable
-VM systems, and `cc` remains the underlying VM runtime, image importer, and
-debug command repository.
+The production repository currently lives at `tinyrange/vmsh`; its rename to
+CrumbleCracker is separate from this source split. The release feed stays on
+`tinyrange/vmsh` until that rename.
 
-The repository is intended to be published as `github.com/tinyrange/vmsh`.
+This is an independent production codebase, condensed from cc. It contains the
+two desktop apps, their shared frontend, and the runtime needed to boot Linux
+images, preserve user storage, share files, run guest commands, and present the
+desktop. Apple Silicon GPU acceleration uses the first-party VirGL renderer and
+shared OpenGL textures.
 
-## What It Does
+The experimental runtime, full daemon and worker system, interactive vmsh shell,
+and other frontends remain in [cc](https://github.com/tinyrange/cc). This repository
+has no cc submodule or dependency. There is no synchronization policy or promise
+of source compatibility. A standalone daemon and Python frontend are future work.
 
-- Runs ordinary shell commands on the host by default.
-- Tracks the selected system as part of shell context, alongside the working
-  directory.
-- Switches to VM-backed systems with `@<image>` and back to the host with
-  `@host`.
-- Keeps host and guest shell state warm when possible, so `cd`, aliases,
-  functions, and exported variables survive across commands.
-- Mounts the host root into guests at `/host` and mirrors the current host
-  directory into the guest working directory.
-- Supports named VMs, memory/CPU sizing, sudo/root execution, networking
-  toggles, and architecture-specific image aliases.
+## Build
 
-## Demo
-
-![vmsh demo](docs/assets/demo.gif)
-
-The demo is generated from real `vmsh` commands with a local VM and local demo
-SSH server:
+Install the Go version specified in `go.mod`, then run:
 
 ```sh
-./tools/build.go demo
+go run ./tools/build.go
 ```
 
-Example interactive session:
+This builds `build/SquadVM` and `build/NeurodeskAppX` (with `.exe` on Windows),
+including Linux guest init payloads. macOS development binaries are ad-hoc signed
+with the hypervisor entitlement. Supported desktop hosts are Apple Silicon macOS,
+Linux amd64, and Windows amd64. Linux requires KVM; Windows requires Windows
+Hypervisor Platform.
+
+For isolated development, pass `-cache-dir` and `-storage` pointing to development
+directories. Existing product settings, shared folders, persistent homes, bundle
+identifiers, and image names are preserved during this source split.
+
+## Checks and releases
+
+Commit CI runs focused product/runtime tests, native Darwin GPU tests, and builds
+for the three supported hosts. It does not download guest images or boot VMs.
+Image publishing and signed/notarized desktop releases are explicit workflows.
+Release signing credentials must be configured in the destination repository.
+
+Before releasing a runtime change, smoke-test both apps with an isolated cache:
+fresh boot, a guest command, shared-folder writes, restart with persistent data,
+startup cancellation/retry, and window resize/close. Check GPU and software display
+when changing presentation. Use the existing GPU fixtures for renderer changes;
+long CTS runs are not part of routine commit CI.
+
+## Source origin
+
+Derived from vmsh `934c6888481dd1e58e8623f09641a34d6735e9e8` and cc
+`c923785e542861318c4feac15e9b3a5a0bc8d183`. Original license text is retained in
+`LICENSE` and `LICENSE-CC`. Gowin is a pinned Go module dependency.
+
+A repeatable headless smoke check is also available:
 
 ```sh
-@alpine
-cat /etc/alpine-release
-cd /tmp
-printf 'hello\n' > note.txt
-
-@work --from ubuntu:24.04 --memory 2g --cpus 4
-python3 --version
-
-@host git status
-@alpine --no-network
-sh -lc 'uname -m && whoami'
-@ --sudo apk add curl
+go build -o build/product-smoke ./tools/smoke
+# On macOS, first sign with tools/entitlements.xml, as tools/build.go does.
+build/product-smoke -cache-dir build/smoke/cache -storage build/smoke/shared -image testdata/alpine-arm64.simg
 ```
 
-## Requirements
-
-- Go 1.25 or newer, matching `go.mod`.
-- Checked-out `cc` and `gowin` submodules.
-- A supported virtualization host when running VM commands:
-  - `linux/amd64` with KVM and user access to `/dev/kvm`.
-  - `windows/amd64` or `windows/arm64` with Windows Hypervisor Platform enabled.
-  - `darwin/arm64` with Hypervisor.framework.
-  - `linux/arm64` with KVM.
-- Network access when downloading kernels or pulling OCI images.
-
-## Repository Layout
-
-- `cmd/vmsh`: the `vmsh` shell.
-- `cc`: git submodule containing `ccvm`, VM backends, image import, and the
-  lower-level `cc` CLI.
-- `gowin`: git submodule containing the native window, input, and OpenGL
-  frontend used by SquadVM and NeurodeskAppX.
-- `docs`: focused development notes and test recipes.
-- [`docs/desktop-automation.md`](docs/desktop-automation.md): opt-in,
-  loopback-only framebuffer capture and guest input for the desktop apps.
-- `tools/build.go`: local build and run helper for `cc`, `ccvm`, the native
-  desktop frontends, and `vmsh`. It uses the checked-out `cc` and `gowin`
-  sources, signs the native payloads on macOS, and can launch the built `vmsh`.
-- `.github/workflows/release.yml`: tag-triggered single-binary releases for
-  Linux, Windows, and signed macOS ARM64.
-- `docs/design`: accepted plans for cross-cutting vmsh features.
-
-## Getting Started
-
-Install the latest release to `~/.local/bin`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/tinyrange/vmsh/main/install.sh | sh
-```
-
-The installer supports macOS ARM64, Linux ARM64/AMD64, and Windows ARM64/AMD64
-release binaries. To install a specific release or choose another destination:
-
-```sh
-VMSH_VERSION=v0.1.0 VMSH_INSTALL_DIR=/usr/local/bin sh install.sh
-```
-
-Clone with submodules:
-
-```sh
-git clone --recurse-submodules https://github.com/tinyrange/vmsh.git
-cd vmsh
-```
-
-If the repository was cloned without submodules:
-
-```sh
-git submodule update --init --recursive
-```
-
-Run the shell locally:
-
-```sh
-./tools/build.go run
-```
-
-`vmsh` expects an interactive terminal for normal use. Interactive sessions use
-the native `vmsh` line editor, persistent history stored in the `ccvm` cache
-directory, and autocomplete for `@` builtins, cached image names, options,
-command names, and host paths.
-
-By default, a `vmsh` frontend owns its daemon session and cleans it up when the
-frontend exits. Start with `-system-session` or run `@detach` to keep the
-session available after the current frontend closes.
-
-### Local security model
-
-vmshd authenticates local connections, and its state and credential files are
-restricted to the operating-system account that started it. All vmsh frontend
-processes running as that account currently share one daemon security principal:
-they are not an isolation boundary from each other and may discover or control
-the account's other daemon sessions. Do not run an untrusted vmsh frontend under
-the same account. Guests, SSH targets, and other clients remain untrusted and
-must interact with the host only through explicitly granted interfaces.
-
-Frontend-scoped credentials and cross-frontend authorization are tracked in
-[issue #112](https://github.com/tinyrange/vmsh/issues/112).
-
-On Windows, the same helper can be run with:
-
-```powershell
-go run .\tools\build.go run
-```
-
-Run an existing `ccvm` binary instead:
-
-```sh
-(cd cc && go run ./internal/cmd/build-guestinit)
-go build -o build/vmsh/vmsh ./cmd/vmsh
-./build/vmsh/vmsh -ccvm /path/to/ccvm
-```
-
-Check the local build identity:
-
-```sh
-vmsh --version
-```
-
-Run a non-interactive script:
-
-```sh
-./tools/build.go
-./build/vmsh/cc -ccvm ./build/vmsh/ccvm pull alpine ./cc/fixtures/alpine.simg
-
-cat > /tmp/vmsh-smoke <<'EOF'
-@smoke --from alpine --memory 256 --no-network sh -lc 'whoami; uname -m'
-EOF
-
-./build/vmsh/vmsh -ccvm ./build/vmsh/ccvm -script /tmp/vmsh-smoke
-```
-
-## Command Syntax
-
-`vmsh` is a session shell. It treats ordinary lines as commands in the current
-context: selected system plus working directory. Lines beginning with `@` are
-`vmsh` control lines that switch system context, create named VM systems, run
-builtins, or apply one-shot options:
-
-```sh
-@<oci-image> [vmsh-options] [--] [command...]
-```
-
-The primary workflow is selecting a system, then running ordinary commands in
-that system:
-
-```sh
-@alpine
-uname -a
-cat /etc/alpine-release
-cd /tmp
-pwd
-@host
-git status
-```
-
-Appending a command to a context line is supported for one-shot use, but it is
-not the main execution model:
-
-```sh
-@alpine uname -a
-```
-
-Common forms:
-
-```sh
-@alpine                         # select the context and start its VM
-uname -a                        # run in the selected context
-@alpine uname -a                # one-shot command in alpine
-@host                           # switch back to the host context
-@host pwd                       # one-shot host command
-@work --from alpine --memory 4g # create or switch to a named VM system
-@ --sudo whoami                 # run as root in the current VM
-@alias ll=@host ls -la          # create an alias
-@alias expand ll /tmp           # preview the expanded command
-@jobs                           # list background jobs
-@status                         # show selected context and VM status
-@install                        # install/update the user-wide vmshd daemon copy
-@upgrade                        # install the latest release and restart vmsh
-@version                        # show vmsh build metadata
-@stop work                      # stop a named VM
-```
-
-Builtins:
-
-```sh
-@help
-@host [command...]
-@jobs
-@sessions
-@detach
-@ps
-@status
-@install
-@upgrade
-@version
-@start
-@stop [name|vm:name|ssh:name]
-@forward <host-port:guest-port>
-@copy SRC DST
-@alias [name=value]
-@alias expand line
-```
-
-`@host` with no command switches the current system to the host. `@host
-<command>` runs a one-shot host command.
-
-Pipelines can mix host, VM, and SSH stages. `vmsh` follows normal POSIX shell
-status semantics: the pipeline status is the final command's status. When an
-earlier mixed-context stage exits non-zero, `vmsh` also prints a diagnostic that
-names the stage number, context, exit status, and command so the final stage does
-not hide the failure.
-
-Guest commands receive a TTY, terminal dimensions, and terminal color
-environment. `vmsh` keeps command execution non-interactive and adds a small
-color prelude for common commands such as `ls`. Interactive host and guest
-commands run through persistent shell sessions when possible, so shell state can
-survive across commands. Commands that need full foreground terminal control
-fall back to a one-shot shell path.
-
-Copy endpoints use explicit context prefixes so accidental names fail early:
-
-```sh
-@copy @host:./file.txt @:~/file.txt          # host to current context
-@copy @:~/file.txt @host:./file.txt          # current context to host
-@copy @vm:work:/tmp/out @ssh:build:/tmp/out  # named VM to SSH host
-@copy @image:alpine:/tmp/out @host:./out     # image context by name
-```
-
-`@copy` follows normal copy semantics across host, VM, isolated VM, and SSH
-endpoints: files overwrite files, existing directory destinations receive the
-source by name and merge with existing contents, and directory/non-directory
-type conflicts fail instead of replacing the destination. Copy errors include
-both source and destination endpoints. Interactive copies show lightweight
-progress on the terminal; non-interactive copies stay quiet for scripts. Remote
-to remote copies stream through a temporary host staging directory and remove it
-when the transfer finishes or fails.
-
-Supported options:
-
-```sh
---from <source>
---cwd <guest-path>
---user <user>
---sudo
---memory <n|nM|nG>
---memory-mb <n>
---cpus <n>
---network
---no-network
---nested
---no-nested
---arch <amd64|arm64>
-```
-
-Use `--` when the guest command itself begins with an option:
-
-```sh
-@alpine -- --help
-```
-
-After selecting a context, ordinary command lines run there:
-
-```sh
-@obsd-build --from openbsd --memory 4g --cpus 1 --network
-pwd
-cd /host/path/to/workspace
-```
-
-Use `@host ...` for one command on the host, or another `@<image> ...` line to
-run a one-off command in a different context.
-
-Guest commands run as UID `1000` by default. Use `@ --sudo <cmd>` or
-`@sudo <cmd>` to run a command as root in the current VM.
-
-If the daemon reports nested virtualization support, `vmsh` enables it by
-default for VM contexts. Use `@ --no-nested` to disable it for the current
-context or a one-shot command.
-
-Use `-record session.cast` to write asciinema v2 output. Use
-`-record-raw session.raw.jsonl` to write a lossless JSONL event stream with
-base64 terminal input/output bytes and resize events for rendering and
-debugging investigations.
-
-## Releases
-
-Pushing a version tag matching `v*` runs the release workflow:
-
-```sh
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The workflow builds one standalone `vmsh` binary per target:
-
-- `linux/amd64`
-- `linux/arm64`
-- `windows/amd64`
-- `windows/arm64`
-- `darwin/arm64`
-
-Release binaries always include the vmshd daemon entrypoint in the same Go
-executable as `vmsh`. At runtime, `vmsh` re-execs itself with
-`VMSH_INTERNAL_VMSHD=1` when it needs to start the authenticated local daemon.
-Guest init helpers are built through the cc runtime cache path when a backend
-needs them.
-
-The release workflow also supports manual dry runs from GitHub Actions. Use
-`workflow_dispatch`, provide a version string for artifact names, and leave
-`publish` disabled to build, sign, notarize, upload artifacts, and generate
-checksums without creating a GitHub Release.
-
-The macOS binary is built on `macos-15` and codesigned with the Hypervisor
-entitlement from `tools/entitlements.xml`. Configure these repository secrets
-for Developer ID signing and notarization:
-
-- `MACOS_CERTIFICATE`: base64-encoded `.p12` signing certificate.
-- `MACOS_CERTIFICATE_PWD`: password for the `.p12` certificate.
-- `MACOS_DEVELOPER_ID`: Developer ID Application identity. The workflow also
-  accepts `DEVELOPER_ID` for compatibility with older `cc` release settings.
-- `APPLE_ID`: Apple ID used by `notarytool`.
-- `APPLE_ID_PASSWORD`: app-specific password for `notarytool`, or
-  `@keychain:<profile>` to use a preconfigured notary keychain profile.
-- `TEAM_ID`: Apple Developer Team ID.
-
-The workflow signs the binary with hardened runtime, submits a temporary ZIP
-containing that binary to Apple's notary service, and publishes the single
-signed binary as the release asset.
+Use `testdata/alpine.simg` on amd64 hosts. The check boots a named VM, verifies
+guest command deadlines and exit status, writes through the host share, then
+stops and restarts the VM and checks the saved contents.

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"j5.nz/cc/client"
+	"github.com/tinyrange/crumblecracker/internal/protocol"
 )
 
 const desktopWebAppReadyEnvironment = "VMSH_DESKTOP_WEBAPP_READY_URL"
@@ -116,7 +116,7 @@ func (t *desktopWebAppTrigger) handleReady(response http.ResponseWriter, request
 	response.WriteHeader(http.StatusNoContent)
 }
 
-func (t *desktopWebAppTrigger) configureGuest(ctx context.Context, api *client.Client, name string) error {
+func (t *desktopWebAppTrigger) configureGuest(ctx context.Context, api desktopRuntime, name string) error {
 	assignment := desktopWebAppReadyEnvironment + "=" + t.guestNotificationURL()
 	result, err := api.RunInContext(ctx, name, client.RunRequest{
 		Command:        []string{"/usr/bin/systemctl", "set-environment", assignment},

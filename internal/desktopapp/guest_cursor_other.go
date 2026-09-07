@@ -2,7 +2,7 @@
 
 package desktopapp
 
-import "j5.nz/cc/display"
+import "github.com/tinyrange/crumblecracker/internal/display"
 
 type noopGuestCursorHost struct{}
 

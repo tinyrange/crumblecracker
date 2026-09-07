@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/tinyrange/vmsh/internal/hostcompat"
+	"github.com/tinyrange/crumblecracker/internal/hostcompat"
 	"golang.org/x/sys/unix"
 )
 

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tinyrange/vmsh/internal/termui/asciicast"
+	"github.com/tinyrange/crumblecracker/internal/termui/asciicast"
 )
 
 func TestDriverSystemComplexPrograms(t *testing.T) {

@@ -14,16 +14,16 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/tinyrange/crumblecracker/internal/display"
+	"github.com/tinyrange/crumblecracker/internal/protocol"
+	"github.com/tinyrange/crumblecracker/internal/ptyterm"
 	"github.com/tinyrange/gowin/gl"
 	gowintext "github.com/tinyrange/gowin/text"
 	"github.com/tinyrange/gowin/window"
-	"github.com/tinyrange/vmsh/internal/ptyterm"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/gomonobold"
 	"golang.org/x/image/font/gofont/goregular"
-	"j5.nz/cc/client"
-	"j5.nz/cc/display"
 )
 
 const (

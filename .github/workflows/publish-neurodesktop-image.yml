@@ -84,12 +84,11 @@ jobs:
           path: neurocontainers
           persist-credentials: false
 
-      - name: Checkout vmsh image tools
+      - name: Checkout CrumbleCracker image tools
         uses: actions/checkout@v6
         with:
-          path: vmsh
+          path: product
           persist-credentials: false
-          submodules: recursive
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -159,18 +158,18 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: vmsh/cc/go.mod
-          cache-dependency-path: vmsh/cc/go.sum
+          go-version-file: product/go.mod
+          cache-dependency-path: product/go.sum
 
       - name: Install OCI publishing tool
-        working-directory: vmsh/cc
+        working-directory: product
         run: |
           set -euo pipefail
           go install github.com/google/go-containerregistry/cmd/crane@v0.21.8
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Repack and push enhanced eStargz architecture image
-        working-directory: vmsh/cc
+        working-directory: product
         env:
           IMAGE_TAG: ${{ inputs.tag }}
           ARCH_SUFFIX: ${{ matrix.suffix }}
@@ -183,7 +182,7 @@ jobs:
             --format=oci \
             "$IMAGE:${IMAGE_TAG}-${ARCH_SUFFIX}" \
             "$work_dir/source"
-          go run ./cmd/estargz-repack-image \
+          go run ./tools/repack-image \
             "$work_dir/source" \
             "$work_dir/enhanced"
           crane push \

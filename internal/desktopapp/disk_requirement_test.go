@@ -3,7 +3,7 @@ package desktopapp
 import (
 	"testing"
 
-	"j5.nz/cc/client"
+	"github.com/tinyrange/crumblecracker/internal/protocol"
 )
 
 func TestCompressedImageDiskRequirementReflectsStoredRepresentation(t *testing.T) {

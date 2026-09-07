@@ -77,7 +77,7 @@ func outputFields(out string) map[string]string {
 	fields := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		parts := strings.Fields(line)
-		if len(parts) >= 3 && parts[0] == "vmsh" && parts[1] == "version" {
+		if len(parts) >= 3 && parts[0] == "CrumbleCracker" && parts[1] == "version" {
 			fields["version"] = parts[2]
 			continue
 		}

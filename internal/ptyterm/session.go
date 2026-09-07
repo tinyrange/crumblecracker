@@ -11,7 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/tinyrange/vmsh/internal/terminal"
+	"github.com/tinyrange/crumblecracker/internal/terminal"
 )
 
 type Options struct {

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tinyrange/vmsh/internal/version"
+	"github.com/tinyrange/crumblecracker/internal/version"
 )
 
 const (
