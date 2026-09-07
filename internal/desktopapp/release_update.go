@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	latestReleaseURL = "https://api.github.com/repos/tinyrange/vmsh/releases/latest"
+	latestReleaseURL = "https://api.github.com/repos/tinyrange/crumblecracker/releases/latest"
 	releaseMaxBytes  = 1024 * 1024
 )
 
