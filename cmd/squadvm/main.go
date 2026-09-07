@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tinyrange/vmsh/internal/desktopapp"
+	"github.com/tinyrange/crumblecracker/internal/desktopapp"
 )
 
 const defaultSquadVMImage = "ghcr.io/tinyrange/squadvm:edge"

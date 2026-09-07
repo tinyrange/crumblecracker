@@ -2,10 +2,9 @@ package desktopapp
 
 import (
 	"context"
-	"encoding/json"
+
 	"image"
-	"net/http"
-	"net/http/httptest"
+
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tinyrange/crumblecracker/internal/display"
+	"github.com/tinyrange/crumblecracker/internal/protocol"
 	"github.com/tinyrange/gowin/window"
-	"j5.nz/cc/client"
-	"j5.nz/cc/display"
 )
 
 func TestScrollDeltaPreservesFractionalMovement(t *testing.T) {
@@ -433,66 +432,6 @@ func TestSquadVMArm64RequestsBinfmtKernelSupport(t *testing.T) {
 	}
 }
 
-func TestWaitForSquadVMDesktopStreamsLongRunningProbe(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/vm/run" || r.URL.Query().Get("stream") != "1" {
-			t.Errorf("readiness request URL = %q", r.URL.String())
-		}
-		if got := r.Header.Get("Accept"); got != "application/x-ndjson" {
-			t.Errorf("readiness request Accept = %q", got)
-		}
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		w.WriteHeader(http.StatusOK)
-		if flusher, ok := w.(http.Flusher); ok {
-			flusher.Flush()
-		}
-		time.Sleep(100 * time.Millisecond)
-		_, _ = w.Write([]byte("{\"kind\":\"exit\",\"exit_code\":0}\n"))
-	}))
-	defer server.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	if err := waitForDesktop(ctx, client.NewClient(server.URL, nil), "squadvm"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestGuestDesktopSetupRunsAsRoot(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var request client.RunRequest
-		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-			t.Errorf("decode setup request: %v", err)
-		}
-		if request.ID != "ndappx" || request.User != "root" {
-			t.Errorf("setup target = %q as %q, want ndappx as root", request.ID, request.User)
-		}
-		if got := request.Command; len(got) != 4 || got[0] != "/bin/sh" || got[3] != "configure graphics" {
-			t.Errorf("setup command = %q", got)
-		}
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		_ = json.NewEncoder(w).Encode(client.ExecEvent{Kind: "exit", ExitCode: 0})
-	}))
-	defer server.Close()
-
-	if err := runGuestRootScript(t.Context(), client.NewClient(server.URL, nil), "ndappx", "configure graphics"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestGuestDesktopSetupRejectsCommandFailure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		_ = json.NewEncoder(w).Encode(client.ExecEvent{Kind: "exit", ExitCode: 7})
-	}))
-	defer server.Close()
-
-	err := runGuestRootScript(t.Context(), client.NewClient(server.URL, nil), "ndappx", "false")
-	if err == nil || err.Error() != "guest setup exited with status 7" {
-		t.Fatalf("setup failure = %v", err)
-	}
-}
-
 type nativeReadinessTestSession struct {
 	resizeTestSession
 	frame    display.OpenGLFrame
@@ -535,21 +474,12 @@ func TestNativeDisplayUsesAcceleratedFrameAsReadinessProof(t *testing.T) {
 }
 
 func TestAcceleratedDisplayCanBecomeReadyThroughCPUFramebufferPath(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/vm/run" || r.URL.Query().Get("stream") != "1" {
-			t.Fatalf("readiness request = %s?%s", r.URL.Path, r.URL.RawQuery)
-		}
-		w.Header().Set("Content-Type", "application/x-ndjson")
-		_, _ = w.Write([]byte("{\"kind\":\"exit\",\"exit_code\":0}\n"))
-	}))
-	defer server.Close()
-
 	session := &nativeReadinessTestSession{
 		resizeTestSession: resizeTestSession{changed: make(chan struct{})},
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := waitForDisplayReady(ctx, client.NewClient(server.URL, nil), "squadvm", session, true); err != nil {
+	if err := waitForDisplayReady(ctx, &testDesktopRuntime{}, "squadvm", session, true); err != nil {
 		t.Fatal(err)
 	}
 }

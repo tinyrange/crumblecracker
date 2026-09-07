@@ -7,7 +7,7 @@ const token = process.env.GITHUB_TOKEN;
 
 const headers = {
   Accept: "application/vnd.github+json",
-  "User-Agent": "vmsh-website-build",
+  "User-Agent": "crumblecracker-website-build",
   "X-GitHub-Api-Version": "2022-11-28",
 };
 
@@ -19,7 +19,7 @@ const response = await fetch(apiUrl, { headers });
 
 if (!response.ok) {
   throw new Error(
-    `Could not load the latest vmsh release: ${response.status} ${response.statusText}`,
+    `Could not load the latest desktop release: ${response.status} ${response.statusText}`,
   );
 }
 
@@ -36,7 +36,6 @@ const architectures = {
 const productOrder = {
   NeurodeskAppX: 0,
   SquadVM: 1,
-  vmsh: 2,
 };
 const platformOrder = {
   macOS: 0,
@@ -51,7 +50,7 @@ const architectureOrder = {
 
 function parseAsset(asset) {
   const match = asset.name.match(
-    /^(NeurodeskAppX|SquadVM|vmsh)_.+_(darwin|linux|windows)_(amd64|arm64)(?:\.zip|\.exe)?$/,
+    /^(NeurodeskAppX|SquadVM)_.+_(darwin|linux|windows)_(amd64|arm64)(?:\.zip|\.exe)?$/,
   );
 
   if (!match) return null;
@@ -90,9 +89,6 @@ if (!assets.some((asset) => asset.product === "SquadVM")) {
   throw new Error("The latest release does not contain SquadVM.");
 }
 
-if (!assets.some((asset) => asset.product === "vmsh")) {
-  throw new Error("The latest release does not contain vmsh.");
-}
 
 const checksumAsset = latest.assets.find(
   (asset) => asset.name === "checksums.txt",
@@ -109,5 +105,5 @@ const releaseData = {
 
 await writeFile(outputUrl, `${JSON.stringify(releaseData, null, 2)}\n`);
 console.log(
-  `Prepared ${assets.length} downloads from vmsh ${latest.tag_name}.`,
+  `Prepared ${assets.length} desktop downloads from ${latest.tag_name}.`,
 );

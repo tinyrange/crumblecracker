@@ -127,7 +127,7 @@ func TestNewerSquadVMReleaseUsesSemanticVersionOrder(t *testing.T) {
 }
 
 func TestReleaseUpdateApplyOpensSelectedAsset(t *testing.T) {
-	const downloadURL = "https://github.com/tinyrange/vmsh/releases/download/v0.7.0/SquadVM_v0.7.0_linux_amd64"
+	const downloadURL = "https://github.com/tinyrange/crumblecracker/releases/download/v0.7.0/SquadVM_v0.7.0_linux_amd64"
 	viewer := &displayViewer{
 		preflight: startupPreflight{
 			ReleaseUpdate: &releaseUpdate{

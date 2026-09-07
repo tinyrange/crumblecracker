@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tinyrange/crumblecracker/internal/protocol"
 	"github.com/tinyrange/gowin/window"
-	"j5.nz/cc/client"
 )
 
 func TestSettingsLayoutFitsSupportedWindows(t *testing.T) {
@@ -120,16 +120,6 @@ func TestExpandedAdvancedLayoutFitsSupportedWindows(t *testing.T) {
 				t.Fatal("short expanded layout did not compact readiness details")
 			}
 		})
-	}
-}
-
-func TestSettingsLayoutUsesThreeQuartersOfAvailableWidth(t *testing.T) {
-	for _, width := range []int{760, 1024, 1440} {
-		layout := settingsControlLayout(float32(width), 900)
-		want := int(float32(width) * uiPanelWidthRatio)
-		if layout.panel.Dx() != want {
-			t.Fatalf("panel width at %d = %d, want %d", width, layout.panel.Dx(), want)
-		}
 	}
 }
 

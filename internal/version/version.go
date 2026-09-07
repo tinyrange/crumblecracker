@@ -72,7 +72,7 @@ func fillFromBuildInfo(info Info, build *debug.BuildInfo) Info {
 
 func (i Info) String() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "vmsh version %s\n", emptyText(i.Version, "devel"))
+	fmt.Fprintf(&b, "CrumbleCracker version %s\n", emptyText(i.Version, "devel"))
 	writeField(&b, "commit", i.Commit)
 	fmt.Fprintf(&b, "dirty %t\n", i.Dirty)
 	writeField(&b, "built", i.BuildDate)

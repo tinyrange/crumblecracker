@@ -27,14 +27,14 @@ async function render() {
   );
 }
 
-test("server renders the default app downloads and every vmsh download", async () => {
+test("server renders the desktop downloads and checksums", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   const renderedDownloads = release.assets.filter(
-    (asset) => asset.product === "vmsh" || asset.platform === "macOS",
+    (asset) => asset.platform === "macOS",
   );
   for (const asset of renderedDownloads) {
     assert.match(html, new RegExp(asset.url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -43,19 +43,14 @@ test("server renders the default app downloads and every vmsh download", async (
     html,
     new RegExp(release.checksums.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
   );
-  assert.equal(
-    html.split("Requires macOS 15 or newer.").length - 1,
-    2,
-    "both desktop applications should document the macOS requirement",
-  );
-  assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
+  assert.doesNotMatch(html, /href="#vmsh"|id="vmsh"|href="[^"]*\/vmsh_[^"]*"/);
 });
 
-test("release data contains the three downloadable products", () => {
+test("release data contains only the desktop products", () => {
   const products = new Set(release.assets.map((asset) => asset.product));
   assert.deepEqual(
     [...products].sort(),
-    ["NeurodeskAppX", "SquadVM", "vmsh"].sort(),
+    ["NeurodeskAppX", "SquadVM"].sort(),
   );
 
   for (const asset of release.assets) {

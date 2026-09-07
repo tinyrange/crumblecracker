@@ -38,22 +38,13 @@ jobs:
           - goos: linux
             goarch: amd64
             build_desktops: true
-          - goos: linux
-            goarch: arm64
-            build_desktops: false
           - goos: windows
             goarch: amd64
             ext: .exe
             build_desktops: true
-          - goos: windows
-            goarch: arm64
-            ext: .exe
-            build_desktops: false
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -61,8 +52,6 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: |
             go.sum
-            cc/go.sum
-            gowin/go.sum
 
       - name: Build release payload
         env:
@@ -73,17 +62,13 @@ jobs:
         run: |
           set -euo pipefail
           version="${RELEASE_VERSION}"
-          vmsh_name="vmsh_${version}_${GOOS}_${GOARCH}${EXE}"
           app_name="NeurodeskAppX_${version}_${GOOS}_${GOARCH}${EXE}"
           squadvm_name="SquadVM_${version}_${GOOS}_${GOARCH}${EXE}"
           mkdir -p dist build/release
 
-          cd cc
-          env -u GOOS -u GOARCH go run ./internal/cmd/build-guestinit -arch "$GOARCH"
-          cd ..
+          env -u GOOS -u GOARCH go run ./internal/core/cmd/build-guestinit -arch "$GOARCH"
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          ldflags="-X github.com/tinyrange/vmsh/internal/version.Release=${version} -X github.com/tinyrange/vmsh/internal/version.Commit=${GITHUB_SHA} -X github.com/tinyrange/vmsh/internal/version.Dirty=false -X github.com/tinyrange/vmsh/internal/version.BuildDate=${build_date}"
-          GOOS="$GOOS" GOARCH="$GOARCH" go build -buildvcs=false -trimpath -ldflags "$ldflags" -o "dist/${vmsh_name}" ./cmd/vmsh
+          ldflags="-X github.com/tinyrange/crumblecracker/internal/version.Release=${version} -X github.com/tinyrange/crumblecracker/internal/version.Commit=${GITHUB_SHA} -X github.com/tinyrange/crumblecracker/internal/version.Dirty=false -X github.com/tinyrange/crumblecracker/internal/version.BuildDate=${build_date}"
           if [[ "$BUILD_DESKTOPS" == "true" ]]; then
             desktop_ldflags="$ldflags"
             if [[ "$GOOS" == "windows" ]]; then
@@ -107,22 +92,12 @@ jobs:
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: |
           set -euo pipefail
-          cd cc
-          go test \
-            ./internal/guestinit \
-            ./internal/freebsd/guestinit \
-            ./internal/netbsd/guestinit \
-            ./internal/openbsd/guestinit
+          go test ./internal/core/guestinit
 
       - name: Smoke-test native Linux payload
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: |
           set -euo pipefail
-          name="vmsh_${RELEASE_VERSION}_linux_amd64"
-          output="$("dist/${name}" --version)"
-          grep -F "vmsh version ${RELEASE_VERSION}" <<<"$output"
-          grep -F "platform linux/amd64" <<<"$output"
-          grep -F "ccvm bundled" <<<"$output"
           app_name="NeurodeskAppX_${RELEASE_VERSION}_linux_amd64"
           "dist/${app_name}" --help 2>&1 | grep -F "Usage of NeurodeskAppX"
           squadvm_name="SquadVM_${RELEASE_VERSION}_linux_amd64"
@@ -146,9 +121,8 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: vmsh-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: crumblecracker-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
-            dist/vmsh_${{ env.RELEASE_VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
             dist/NeurodeskAppX_${{ env.RELEASE_VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
             dist/SquadVM_${{ env.RELEASE_VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
           if-no-files-found: error
@@ -166,8 +140,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -175,8 +147,6 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: |
             go.sum
-            cc/go.sum
-            gowin/go.sum
 
       - name: Check macOS signing and notarization secrets
         run: |
@@ -215,7 +185,6 @@ jobs:
         run: |
           set -euo pipefail
           version="${RELEASE_VERSION}"
-          vmsh_name="vmsh_${version}_darwin_arm64"
           app="dist/NeurodeskAppX.app"
           squad_app="dist/SquadVM.app"
           mkdir -p \
@@ -226,12 +195,9 @@ jobs:
             "$squad_app/Contents/MacOS" \
             "$squad_app/Contents/Resources"
 
-          cd cc
-          go run ./internal/cmd/build-guestinit -arch arm64
-          cd ..
+          go run ./internal/core/cmd/build-guestinit -arch arm64
           build_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          ldflags="-X github.com/tinyrange/vmsh/internal/version.Release=${version} -X github.com/tinyrange/vmsh/internal/version.Commit=${GITHUB_SHA} -X github.com/tinyrange/vmsh/internal/version.Dirty=false -X github.com/tinyrange/vmsh/internal/version.BuildDate=${build_date}"
-          GOOS=darwin GOARCH=arm64 go build -buildvcs=false -trimpath -ldflags "$ldflags" -o "dist/${vmsh_name}" ./cmd/vmsh
+          ldflags="-X github.com/tinyrange/crumblecracker/internal/version.Release=${version} -X github.com/tinyrange/crumblecracker/internal/version.Commit=${GITHUB_SHA} -X github.com/tinyrange/crumblecracker/internal/version.Dirty=false -X github.com/tinyrange/crumblecracker/internal/version.BuildDate=${build_date}"
           CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
             -buildvcs=false \
             -trimpath \
@@ -285,24 +251,11 @@ jobs:
       - name: Verify embedded guest init payloads
         run: |
           set -euo pipefail
-          cd cc
-          go test \
-            ./internal/guestinit \
-            ./internal/freebsd/guestinit \
-            ./internal/netbsd/guestinit \
-            ./internal/openbsd/guestinit
+          go test ./internal/core/guestinit
 
       - name: Sign macOS binaries
         run: |
           set -euo pipefail
-          codesign \
-            --force \
-            --sign "$MACOS_DEVELOPER_ID" \
-            --entitlements tools/entitlements.xml \
-            --timestamp \
-            --options runtime \
-            --keychain build.keychain \
-            "dist/vmsh_${RELEASE_VERSION}_darwin_arm64"
           codesign \
             --force \
             --sign "$MACOS_DEVELOPER_ID" \
@@ -337,7 +290,6 @@ jobs:
             "dist/SquadVM.app"
           codesign --verify --deep --strict --verbose=2 "dist/NeurodeskAppX.app"
           codesign --verify --deep --strict --verbose=2 "dist/SquadVM.app"
-          codesign --verify --strict --verbose=2 "dist/vmsh_${RELEASE_VERSION}_darwin_arm64"
           codesign -d --verbose=4 "dist/NeurodeskAppX.app" 2>&1 | grep runtime
           codesign -d --verbose=4 "dist/SquadVM.app" 2>&1 | grep runtime
           app_entitlements="$(mktemp)"
@@ -355,14 +307,11 @@ jobs:
         run: |
           set -euo pipefail
           notary_dir="build/release/notary"
-          notary_zip="build/release/desktop_apps_vmsh_notary.zip"
+          notary_zip="build/release/desktop_apps_notary.zip"
           notary_result="$(mktemp)"
           trap 'rm -f "$notary_zip" "$notary_result"' EXIT
           rm -rf "$notary_dir"
           mkdir -p "$notary_dir"
-          cp \
-            "dist/vmsh_${RELEASE_VERSION}_darwin_arm64" \
-            "$notary_dir/"
           ditto "dist/NeurodeskAppX.app" "$notary_dir/NeurodeskAppX.app"
           ditto "dist/SquadVM.app" "$notary_dir/SquadVM.app"
           ditto -c -k --keepParent "$notary_dir" "$notary_zip"
@@ -385,7 +334,6 @@ jobs:
           fi
 
           test "$(plutil -extract status raw -o - "$notary_result")" = Accepted
-          codesign --verify --strict --verbose=2 "dist/vmsh_${RELEASE_VERSION}_darwin_arm64"
           codesign --verify --deep --strict --verbose=2 "dist/NeurodeskAppX.app"
           codesign --verify --deep --strict --verbose=2 "dist/SquadVM.app"
           xcrun stapler staple "dist/NeurodeskAppX.app"
@@ -410,11 +358,6 @@ jobs:
       - name: Smoke-test signed macOS payload
         run: |
           set -euo pipefail
-          name="vmsh_${RELEASE_VERSION}_darwin_arm64"
-          output="$("dist/${name}" --version)"
-          grep -F "vmsh version ${RELEASE_VERSION}" <<<"$output"
-          grep -F "platform darwin/arm64" <<<"$output"
-          grep -F "ccvm bundled" <<<"$output"
           "dist/NeurodeskAppX.app/Contents/MacOS/NeurodeskAppX" --help 2>&1 |
             grep -F "Usage of NeurodeskAppX"
           "dist/SquadVM.app/Contents/MacOS/SquadVM" --help 2>&1 |
@@ -423,9 +366,8 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: vmsh-darwin-arm64
+          name: crumblecracker-darwin-arm64
           path: |
-            dist/vmsh_${{ env.RELEASE_VERSION }}_darwin_arm64
             dist/NeurodeskAppX_${{ env.RELEASE_VERSION }}_darwin_arm64.zip
             dist/SquadVM_${{ env.RELEASE_VERSION }}_darwin_arm64.zip
           if-no-files-found: error
@@ -446,7 +388,7 @@ jobs:
       - name: Generate checksums
         run: |
           set -euo pipefail
-          find artifacts -type f \( -name 'vmsh_*' -o -name 'NeurodeskAppX_*' -o -name 'SquadVM_*' \) -print0 |
+          find artifacts -type f \( -name 'NeurodeskAppX_*' -o -name 'SquadVM_*' \) -print0 |
             sort -z |
             xargs -0 sha256sum |
             sed 's#artifacts/[^/]*/##' > checksums.txt
@@ -455,7 +397,7 @@ jobs:
       - name: Upload checksums
         uses: actions/upload-artifact@v4
         with:
-          name: vmsh-checksums
+          name: crumblecracker-checksums
           path: checksums.txt
           if-no-files-found: error
 
@@ -466,7 +408,6 @@ jobs:
           tag_name: ${{ env.RELEASE_VERSION }}
           body_path: RELEASENOTES.md
           files: |
-            artifacts/**/vmsh_*
             artifacts/**/NeurodeskAppX_*
             artifacts/**/SquadVM_*
             checksums.txt

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tinyrange/vmsh/internal/desktopapp"
+	"github.com/tinyrange/crumblecracker/internal/desktopapp"
 )
 
 const defaultNeurodesktopImage = "ghcr.io/tinyrange/neurodesktop-glass:latest-estargz"
@@ -103,7 +103,7 @@ func main() {
 		Subtitle:             "Reproducible neuroimaging",
 		Kind:                 "ndappx",
 		Theme:                desktopapp.ThemeNeurodesk,
-		DefaultVMName:        "ndappx",
+		DefaultVMName:        "neurodesk",
 		DefaultImage:         defaultNeurodesktopImage,
 		DefaultStorage:       "~/neurodesktop-storage",
 		GuestStorageMount:    "/vmsh-neurodesktop-storage",

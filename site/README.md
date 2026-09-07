@@ -1,6 +1,8 @@
-# vmsh website
+# CrumbleCracker website
 
-The landing page for vmsh, NeurodeskAppX, and SquadVM.
+The downloads page for NeurodeskAppX and SquadVM.
+
+The existing GitHub Pages address remains `/vmsh/` until the repository is renamed.
 
 ## Local development
 

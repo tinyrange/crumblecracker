@@ -5,7 +5,7 @@ conformance target. It pins Khronos VK-GL-CTS `opengl-cts-4.6.8.1`, launches a
 real Xorg/GLX desktop against Mesa VirGL, and writes all results beneath
 `/shared/gpu-cts`.
 
-The runtime uses Mesa 26.1.6, the current stable release, as one cohesive
+The runtime uses the pinned Mesa 26.1.6 release, as one cohesive
 userspace under `/opt/mesa`: EGL, GL, GLES1/GLES2, GBM, and the VirGL DRI driver
 are built together. Keeping the loader and driver from the same build avoids
 distribution-private DRI symbol ABI mismatches. GLES1 is enabled because the
@@ -57,24 +57,26 @@ results. `manifest.json` remains the immediate API-ceiling record. Desktop GL
 4.1 becomes a claimed target only after Mesa exposes the version and every
 corresponding CTS slice passes.
 
-Build the image natively on `astra-pi5`. Export only the final Docker image,
+Build the image on an ARM64 Linux builder. Export only the final Docker image,
 copy it into `build/gpu-cts`, and launch it with a unique VM name, explicit
 repository-local `-cache-dir` and `-storage`, and the native Glass frontend.
 Do not reuse another SquadVM home or cache.
 
 Use a single-platform archive without BuildKit provenance. The explicit
-platform descriptor is required by cc's archive importer, and the
+platform descriptor is required by the archive importer, and the
 `docker-archive:` source scheme tells SquadVM to import the archive rather than
 treating its path as the name of an image that was already imported:
 
 ```sh
+go run ./tools/build.go
+mkdir -p build/gpu-cts
 docker buildx build \
     --platform linux/arm64 \
     --provenance=false \
-    --output type=docker,dest=/home/joshua/vmsh-gpu-cts.docker.tar \
+    --output type=docker,dest=$PWD/build/gpu-cts/vmsh-gpu-cts.docker.tar \
     images/gpu-cts
 
-build/gpu-cts/run/squadvm \
+build/SquadVM \
     -name gpu-cts-development \
     -cache-dir "$PWD/build/gpu-cts/cache" \
     -storage "$PWD/build/gpu-cts/shared" \

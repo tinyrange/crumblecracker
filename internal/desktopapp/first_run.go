@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tinyrange/crumblecracker/internal/protocol"
 	"golang.org/x/crypto/ssh"
-	"j5.nz/cc/client"
 )
 
 const (
@@ -293,7 +293,7 @@ func appCacheContainsImage(dir string) bool {
 	return err == nil && info.IsDir()
 }
 
-func runAppPreflight(ctx context.Context, api *client.Client, source, cacheDir string) (startupPreflight, error) {
+func runAppPreflight(ctx context.Context, api desktopRuntime, source, cacheDir string) (startupPreflight, error) {
 	type releaseCheckResult struct {
 		update *releaseUpdate
 		err    error
@@ -565,7 +565,7 @@ func writeFileAtomically(path string, data []byte, mode fs.FileMode) error {
 	return nil
 }
 
-func configureGuestSSH(ctx context.Context, api *client.Client, name string, publicKey []byte) error {
+func configureGuestSSH(ctx context.Context, api desktopRuntime, name string, publicKey []byte) error {
 	const script = `set -eu
 user=$1
 home=$2

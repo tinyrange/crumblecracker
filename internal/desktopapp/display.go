@@ -14,16 +14,16 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/tinyrange/crumblecracker/internal/display"
+	"github.com/tinyrange/crumblecracker/internal/protocol"
+	"github.com/tinyrange/crumblecracker/internal/ptyterm"
 	"github.com/tinyrange/gowin/gl"
 	gowintext "github.com/tinyrange/gowin/text"
 	"github.com/tinyrange/gowin/window"
-	"github.com/tinyrange/vmsh/internal/ptyterm"
 	"golang.org/x/image/font/gofont/gobold"
 	"golang.org/x/image/font/gofont/gomono"
 	"golang.org/x/image/font/gofont/gomonobold"
 	"golang.org/x/image/font/gofont/goregular"
-	"j5.nz/cc/client"
-	"j5.nz/cc/display"
 )
 
 const (
@@ -1139,8 +1139,7 @@ func (v *displayViewer) drawSettings(backingWidth, backingHeight int) {
 		float32(brand.Min.X), float32(brand.Min.Y), float32(brand.Dx()), float32(brand.Dy()),
 	)
 
-	v.text.SetViewport(int32(width), int32(height))
-	v.text.SetScale(scale)
+	v.text.SetViewport(int32(backingWidth), int32(backingHeight))
 	title := "Checking your system"
 	detail := "Confirming the host and desktop image are ready."
 	state := "CHECKING"
@@ -1880,8 +1879,7 @@ func (v *displayViewer) drawStartup(backingWidth, backingHeight int, now time.Ti
 		float32(brand.Min.X), float32(brand.Min.Y), float32(brand.Dx()), float32(brand.Dy()),
 	)
 
-	v.text.SetViewport(int32(width), int32(height))
-	v.text.SetScale(scale)
+	v.text.SetViewport(int32(backingWidth), int32(backingHeight))
 
 	state := "IN PROGRESS"
 	stateColor := uiAccentSoft
@@ -2305,8 +2303,7 @@ func (v *displayViewer) drawAppChrome(backingWidth, backingHeight int) {
 	v.drawRect(backingWidth, backingHeight, scale, 0, appChromeHeight-1, width, 1, uiBorder)
 
 	statusBounds := cvmfsChromeStatusBounds(width, v.chromeInsets)
-	v.text.SetViewport(int32(width), int32(float32(backingHeight)/scale))
-	v.text.SetScale(scale)
+	v.text.SetViewport(int32(backingWidth), int32(backingHeight))
 
 	statusColor := uiAccent
 	statusBackground := uiSurfaceRaised
@@ -2596,15 +2593,15 @@ func (v *displayViewer) drawTextFont(font int, value string, x, y, size float32,
 		float32(col.B) / 255,
 		float32(col.A) / 255,
 	}
-	v.text.DrawText(font, float64(size), float64(x), float64(y), value, rgba)
+	// Rasterize at backing resolution; Stash.SetScale does not scale glyphs.
+	// Keep layout in points, but snap the text origin to a physical pixel.
+	scale := float64(normalizedDisplayScale(v.window.Scale()))
+	v.text.DrawText(font, float64(size)*scale,
+		math.Round(float64(x)*scale), math.Round(float64(y)*scale), value, rgba)
 }
 
 func (v *displayViewer) drawTextBold(value string, x, y, size float32, col color.RGBA) {
-	if strings.TrimSpace(value) == "" {
-		return
-	}
-	rgba := [4]float32{float32(col.R) / 255, float32(col.G) / 255, float32(col.B) / 255, float32(col.A) / 255}
-	v.text.DrawText(v.fontBold, float64(size), float64(x), float64(y), value, rgba)
+	v.drawTextFont(v.fontBold, value, x, y, size, col)
 }
 
 func (v *displayViewer) drawCenteredTextBold(value string, bounds image.Rectangle, size float32, col color.RGBA) {

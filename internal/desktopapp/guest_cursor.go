@@ -1,6 +1,6 @@
 package desktopapp
 
-import "j5.nz/cc/display"
+import "github.com/tinyrange/crumblecracker/internal/display"
 
 type guestCursorHost interface {
 	Apply(update display.CursorUpdate, desktopVisible bool) error

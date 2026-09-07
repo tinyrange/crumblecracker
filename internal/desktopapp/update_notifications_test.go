@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tinyrange/crumblecracker/internal/protocol"
 	"github.com/tinyrange/gowin/window"
-	"j5.nz/cc/client"
 )
 
 func TestUpdateNotificationsIncludeImageAndVMMThenExpire(t *testing.T) {

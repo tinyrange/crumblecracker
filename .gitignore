@@ -1,5 +1,5 @@
 /build/
-/local/
 /dist/
-/vmsh
-/vmsh.exe
+/internal/core/guestinit/guest-init-linux-*
+*.test
+.DS_Store

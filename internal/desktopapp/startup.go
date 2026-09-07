@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"j5.nz/cc/client"
-	"j5.nz/cc/display"
+	"github.com/tinyrange/crumblecracker/internal/display"
+	"github.com/tinyrange/crumblecracker/internal/protocol"
 )
 
 type startupPhase int

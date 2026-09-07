@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"j5.nz/cc/display"
+	"github.com/tinyrange/crumblecracker/internal/display"
 )
 
 const automationTestToken = "0123456789abcdef0123456789abcdef"

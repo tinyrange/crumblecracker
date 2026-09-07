@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"j5.nz/cc/display"
+	"github.com/tinyrange/crumblecracker/internal/display"
 )
 
 const (

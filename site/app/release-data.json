@@ -50,46 +50,6 @@
       "arch": "x64",
       "size": 52619756,
       "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/SquadVM_v0.6.1_linux_amd64"
-    },
-    {
-      "product": "vmsh",
-      "name": "vmsh_v0.6.1_darwin_arm64",
-      "platform": "macOS",
-      "arch": "Apple silicon",
-      "size": 56103152,
-      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/vmsh_v0.6.1_darwin_arm64"
-    },
-    {
-      "product": "vmsh",
-      "name": "vmsh_v0.6.1_windows_amd64.exe",
-      "platform": "Windows",
-      "arch": "x64",
-      "size": 57016832,
-      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/vmsh_v0.6.1_windows_amd64.exe"
-    },
-    {
-      "product": "vmsh",
-      "name": "vmsh_v0.6.1_windows_arm64.exe",
-      "platform": "Windows",
-      "arch": "ARM64",
-      "size": 54011392,
-      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/vmsh_v0.6.1_windows_arm64.exe"
-    },
-    {
-      "product": "vmsh",
-      "name": "vmsh_v0.6.1_linux_amd64",
-      "platform": "Linux",
-      "arch": "x64",
-      "size": 56777007,
-      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/vmsh_v0.6.1_linux_amd64"
-    },
-    {
-      "product": "vmsh",
-      "name": "vmsh_v0.6.1_linux_arm64",
-      "platform": "Linux",
-      "arch": "ARM64",
-      "size": 54118570,
-      "url": "https://github.com/tinyrange/vmsh/releases/download/v0.6.1/vmsh_v0.6.1_linux_arm64"
     }
   ]
 }

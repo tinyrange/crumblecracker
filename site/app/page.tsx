@@ -122,20 +122,14 @@ function DownloadCard({ product }: { product: Product }) {
 }
 
 export default function Home() {
-  const vmshDownloads = release.assets.filter(
-    (asset) => asset.product === "vmsh",
-  );
-
   return (
     <main>
       <header className="site-header">
-        <a className="vmsh-logo" href="#" aria-label="vmsh home">
-          <span className="prompt-mark">&gt;_</span>
-          <span>vmsh</span>
+        <a className="site-logo" href="#" aria-label="CrumbleCracker home">
+          <span>CrumbleCracker</span>
         </a>
         <nav aria-label="Main navigation">
           <a href="#apps">Apps</a>
-          <a href="#vmsh">vmsh</a>
           <a
             className="github-link"
             href="https://github.com/tinyrange/vmsh"
@@ -160,8 +154,8 @@ export default function Home() {
           </div>
           <div className="hero-details">
             <p className="hero-description">
-              Purpose-built desktops powered by vmsh. Download, launch, and start
-              working.
+              Purpose-built desktops powered by CrumbleCracker. Download, launch,
+              and start working.
             </p>
             <div className="release-line">
               <span className="status-dot" />
@@ -177,58 +171,13 @@ export default function Home() {
         </section>
       </div>
 
-      <section className="vmsh-section" id="vmsh">
-        <div className="vmsh-intro">
-          <p className="kicker">
-            <span />
-            FOR DEVELOPERS
-          </p>
-          <h2>
-            One shell.
-            <br />
-            <em>Any system.</em>
-          </h2>
-          <p>
-            vmsh makes local virtual machines feel like part of your shell.
-            Switch systems, keep your context, and run ordinary commands.
-          </p>
-          <a
-            className="text-link"
-            href="https://github.com/tinyrange/vmsh#readme"
-          >
-            Read the documentation <span aria-hidden="true">→</span>
-          </a>
-        </div>
-
-        <div className="cli-panel">
-          <div className="cli-command">
-            <span>$</span>
-            <code>vmsh</code>
-          </div>
-          <div className="cli-downloads">
-            {vmshDownloads.map((download) => (
-              <a href={download.url} key={download.name}>
-                <span>
-                  <strong>{download.platform}</strong>
-                  <small>{download.arch}</small>
-                </span>
-                <span className="asset-size">{prettySize(download.size)}</span>
-                <span aria-hidden="true">↓</span>
-              </a>
-            ))}
-          </div>
-          <a className="checksums" href={release.checksums}>
-            SHA256 checksums <span aria-hidden="true">↗</span>
-          </a>
-        </div>
-      </section>
-
       <footer>
-        <a className="vmsh-logo" href="#">
-          <span className="prompt-mark">&gt;_</span>
-          <span>vmsh</span>
+        <a className="site-logo" href="#">
+          <span>CrumbleCracker</span>
         </a>
-        <p>Virtual machines that belong in your shell.</p>
+        <a className="checksums" href={release.checksums}>
+          SHA256 checksums <span aria-hidden="true">↗</span>
+        </a>
         <span>Open source · {release.tag}</span>
       </footer>
     </main>
