@@ -104,6 +104,7 @@ func main() {
 		Kind:                 "ndappx",
 		Theme:                desktopapp.ThemeNeurodesk,
 		DefaultVMName:        "neurodesk",
+		LegacyDefaultHome:    "ndappx",
 		DefaultImage:         defaultNeurodesktopImage,
 		DefaultStorage:       "~/neurodesktop-storage",
 		GuestStorageMount:    "/vmsh-neurodesktop-storage",
