@@ -14,6 +14,7 @@ type Config struct {
 	Kind                               string
 	Theme                              Theme
 	DefaultVMName                      string
+	LegacyDefaultHome                  string
 	DefaultImage                       string
 	DefaultStorage                     string
 	GuestStorageMount                  string

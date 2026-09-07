@@ -374,6 +374,10 @@ func Run(config Config, args []string) (retErr error) {
 			var sshPublicKey []byte
 			var sshIdentity string
 			startRequest := applyStartupOptions(request, options)
+			startRequest.PersistentMounts, _, err = configuredPersistentHomeMount(activeCacheDir, *name, *home, *ephemeralHome)
+			if err != nil {
+				return displayStarted{}, err
+			}
 			startRequest.Shares = []client.ShareMount{selectedShare}
 			// The native startup view owns the window until the graphical session
 			// is ready, so keep the VM serial stream enabled and show it there.
@@ -626,6 +630,10 @@ func Run(config Config, args []string) (retErr error) {
 		return fmt.Errorf("prepare image %q: %w", fs.Arg(0), err)
 	}
 	request.Image = imageName
+	request.PersistentMounts, persistentHome, err = configuredPersistentHomeMount(activeCacheDir, *name, *home, *ephemeralHome)
+	if err != nil {
+		return err
+	}
 	var webApp *desktopWebAppTrigger
 	if appConfig.DesktopWebApp != nil && request.Network != nil {
 		webApp, err = prepareDesktopWebApp(request.Network, *appConfig.DesktopWebApp)
