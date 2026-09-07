@@ -123,16 +123,6 @@ func TestExpandedAdvancedLayoutFitsSupportedWindows(t *testing.T) {
 	}
 }
 
-func TestSettingsLayoutUsesThreeQuartersOfAvailableWidth(t *testing.T) {
-	for _, width := range []int{760, 1024, 1440} {
-		layout := settingsControlLayout(float32(width), 900)
-		want := int(float32(width) * uiPanelWidthRatio)
-		if layout.panel.Dx() != want {
-			t.Fatalf("panel width at %d = %d, want %d", width, layout.panel.Dx(), want)
-		}
-	}
-}
-
 func TestLongStartupDetailWrapsWithinTwoReadableLines(t *testing.T) {
 	lines := wrapStartupText(
 		"Hypervisor.framework could not create the interrupt controller required by this machine",

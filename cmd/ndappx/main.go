@@ -103,7 +103,7 @@ func main() {
 		Subtitle:             "Reproducible neuroimaging",
 		Kind:                 "ndappx",
 		Theme:                desktopapp.ThemeNeurodesk,
-		DefaultVMName:        "ndappx",
+		DefaultVMName:        "neurodesk",
 		DefaultImage:         defaultNeurodesktopImage,
 		DefaultStorage:       "~/neurodesktop-storage",
 		GuestStorageMount:    "/vmsh-neurodesktop-storage",

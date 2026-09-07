@@ -106,9 +106,7 @@ func (v *displayViewer) drawUpdateNotifications(backingWidth, backingHeight int,
 	v.gl.Enable(gl.Blend)
 	scale := normalizedDisplayScale(v.window.Scale())
 	width := float32(backingWidth) / scale
-	height := float32(backingHeight) / scale
-	v.text.SetViewport(int32(width), int32(height))
-	v.text.SetScale(scale)
+	v.text.SetViewport(int32(backingWidth), int32(backingHeight))
 	for index, layout := range updateNotificationLayouts(width, notifications) {
 		bounds := layout.bounds
 		v.drawPanel(backingWidth, backingHeight, scale, bounds, 10,

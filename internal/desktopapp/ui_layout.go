@@ -6,8 +6,8 @@ const (
 	uiOuterMargin       = 20
 	uiCompactMargin     = 16
 	uiSettingsTopInset  = 12
-	uiPanelMaxWidth     = 1080
-	uiPanelWidthRatio   = 0.75
+	uiPanelMaxWidth     = 960
+	uiPanelWidthRatio   = 0.85
 	uiSettingsHeight    = 468
 	uiBrandSize         = 48
 	uiCardGap           = 8
@@ -217,7 +217,7 @@ func calculateStartupScreenLayout(width, height float32) startupScreenLayout {
 	panelWidth := max(float32(1), min(float32(960), min(width*uiPanelWidthRatio, width-margin*2)))
 	left := (width - panelWidth) / 2
 	contentHeight := float32(370)
-	top := max(margin, float32(46))
+	top := max(margin, min(float32(96), (height-contentHeight)/3))
 	right := left + panelWidth
 
 	layout := startupScreenLayout{
