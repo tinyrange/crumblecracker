@@ -3,7 +3,9 @@
 SquadVM is a curated Kali Linux desktop for UQ Cyber Squad. It boots systemd,
 Xorg, and XFCE against the Glass virtio display and input devices. The image
 includes the Glass clipboard and display-resize bridges, a non-root `squad`
-user with passwordless sudo, and an explicit security-tool manifest.
+user with passwordless sudo, gedit for graphical text editing, and an explicit
+security-tool manifest. Open **Text Editor** from the desktop or application menu,
+or open a text file from the file manager.
 The SSH daemon runs inside the isolated guest with password and root login
 disabled. SquadVM's optional host integration installs a dedicated key,
 forwards the service on host loopback, and manages the `Host squadvm` block in

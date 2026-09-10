@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Text Editor
+Comment=Edit text files with gedit
+TryExec=/usr/bin/gedit
+Exec=/usr/bin/gedit %U
+Icon=org.gnome.gedit
+Terminal=false
+Categories=Utility;TextEditor;
+MimeType=text/plain;
+StartupNotify=true

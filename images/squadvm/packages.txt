@@ -18,6 +18,7 @@ x11-xserver-utils
 xclip
 xfce4
 xfce4-terminal
+gedit
 xserver-xorg-core
 xserver-xorg-input-evdev
 xserver-xorg-input-libinput
