@@ -142,3 +142,40 @@ func TestToolbarOpensConfiguredSharedFolder(t *testing.T) {
 		})
 	}
 }
+
+func TestCaptureRequiresGuestDeviceReadiness(t *testing.T) {
+	v, w, _ := captureViewer(t)
+	v.mouseCaptureReady = false
+	if v.mouseCaptureAvailable() {
+		t.Fatal("capture advertised for an unsupported image")
+	}
+	if err := v.setMouseCaptured(true); err == nil || w.captured {
+		t.Fatal("captured without guest device readiness")
+	}
+}
+func TestFocusLossReleasesCaptureWithoutAutomaticRecapture(t *testing.T) {
+	v, w, s := captureViewer(t)
+	if err := v.setMouseCaptured(true); err != nil {
+		t.Fatal(err)
+	}
+	v.buttons = 1
+	if err := v.sendRelativePointer(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	v.keysDown[window.KeyW] = true
+	if err := v.syncMouseCapture(false); err != nil {
+		t.Fatal(err)
+	}
+	if w.captured || v.mouseCaptured || s.relative[len(s.relative)-1].buttons != 0 {
+		t.Fatal("focus loss did not release mouse")
+	}
+	if len(s.keys) != 1 || s.keys[0].down {
+		t.Fatalf("keys on focus loss: %v", s.keys)
+	}
+	if err := v.syncMouseCapture(true); err != nil {
+		t.Fatal(err)
+	}
+	if w.captured {
+		t.Fatal("focus gain recaptured mouse without user action")
+	}
+}

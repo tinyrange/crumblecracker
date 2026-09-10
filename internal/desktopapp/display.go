@@ -622,10 +622,8 @@ func (v *displayViewer) loop(ctx context.Context) error {
 	v.attachHostClipboard()
 	nextClipboardCheck := time.Now()
 	for v.window.Poll() {
-		if v.mouseCaptured && (!mouseCaptureWindowFocused() || !v.desktopVisible) {
-			if err := v.setMouseCaptured(false); err != nil {
-				return err
-			}
+		if err := v.syncMouseCapture(mouseCaptureWindowFocused()); err != nil {
+			return err
 		}
 		v.drainStartupSerial()
 		select {

@@ -89,3 +89,10 @@ func toolbarActionBounds(insets window.TitleBarInsets, capture bool) (folder, mo
 	}
 	return
 }
+
+func (v *displayViewer) syncMouseCapture(focused bool) error {
+	if v.mouseCaptured && (!focused || !v.desktopVisible) {
+		return v.setMouseCaptured(false)
+	}
+	return nil
+}
