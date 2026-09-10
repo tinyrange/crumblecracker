@@ -93,3 +93,9 @@ type HighResolutionScroller interface {
 type CursorProvider interface {
 	Cursor() CursorUpdate
 }
+
+// RelativePointerSession sends unscaled mouse counts through a relative device.
+type RelativePointerSession interface {
+	RelativePointer(dx, dy int32, buttons, previousButtons uint8) error
+	RelativeScroll(dx120, dy120 int32) error
+}

@@ -193,6 +193,14 @@ type displayViewer struct {
 	updateHoverActive   bool
 	updateConsumedKeys  map[window.Key]bool
 	chromeEnabled       bool
+	cvmfsAvailable      bool
+	mouseCaptured       bool
+	mouseCaptureReady   bool
+	mouseRemainderX     float64
+	mouseRemainderY     float64
+	lastPointerX        uint32
+	lastPointerY        uint32
+	toolbarError        string
 	chromeInsets        window.TitleBarInsets
 	cvmfsStatus         client.CVMFSStatusResponse
 	cvmfsActivity       cvmfsActivityPresentation
@@ -305,14 +313,17 @@ func openDisplayWindow(
 		updateConsumedKeys:  make(map[window.Key]bool),
 		parentContext:       ctx,
 		start:               start,
-		chromeEnabled:       cvmfsStatus != nil,
+		chromeEnabled:       true,
+		cvmfsAvailable:      cvmfsStatus != nil,
 		cvmfsStatusEvents:   make(chan client.CVMFSStatusResponse, 1),
 	}
 	if viewer.chromeEnabled {
 		if chrome, ok := win.(window.IntegratedTitleBarSupport); ok && chrome.SetIntegratedTitleBar(true) {
 			viewer.chromeInsets = chrome.IntegratedTitleBarInsets()
 		}
-		go pollCVMFSStatus(ctx, cvmfsStatus, viewer.cvmfsStatusEvents)
+		if cvmfsStatus != nil {
+			go pollCVMFSStatus(ctx, cvmfsStatus, viewer.cvmfsStatusEvents)
+		}
 	}
 	viewer.setStartupProgress(initialStartupProgress())
 	if err := viewer.init(); err != nil {
@@ -563,6 +574,7 @@ func (v *displayViewer) init() error {
 }
 
 func (v *displayViewer) close() {
+	_ = v.setMouseCaptured(false)
 	if v.automation != nil {
 		v.automation.setSession(nil)
 	}
@@ -610,6 +622,11 @@ func (v *displayViewer) loop(ctx context.Context) error {
 	v.attachHostClipboard()
 	nextClipboardCheck := time.Now()
 	for v.window.Poll() {
+		if v.mouseCaptured && (!mouseCaptureWindowFocused() || !v.desktopVisible) {
+			if err := v.setMouseCaptured(false); err != nil {
+				return err
+			}
+		}
 		v.drainStartupSerial()
 		select {
 		case <-ctx.Done():
@@ -649,6 +666,7 @@ func (v *displayViewer) loop(ctx context.Context) error {
 					v.setStartupProgress(failedStartupProgress(fmt.Errorf("VM started without a native display session")))
 				} else {
 					v.session = result.started.Session
+					v.mouseCaptureReady = result.started.MouseCaptureReady
 					if v.automation != nil {
 						v.automation.setSession(v.session)
 					}
@@ -2329,15 +2347,22 @@ func (v *displayViewer) drawAppChrome(backingWidth, backingHeight int) {
 		statusColor = uiError
 		statusBackground = uiErrorSurface
 	}
-	v.drawRoundedRect(backingWidth, backingHeight, scale, statusBounds, statusBounds.Dy()/2, statusBackground)
-	if v.cvmfsStatus.State == "downloading" {
-		fraction := float32(v.cvmfsStatus.Progress)
-		if fraction <= 0 {
-			fraction = 0.08
+	if v.cvmfsAvailable {
+		v.drawRoundedRect(backingWidth, backingHeight, scale, statusBounds, statusBounds.Dy()/2, statusBackground)
+		if v.cvmfsStatus.State == "downloading" {
+			fraction := float32(v.cvmfsStatus.Progress)
+			if fraction <= 0 {
+				fraction = 0.08
+			}
+			fraction = min(float32(1), max(float32(0.02), fraction))
+			v.drawRect(backingWidth, backingHeight, scale, float32(statusBounds.Min.X)+8, float32(statusBounds.Max.Y)-4,
+				float32(statusBounds.Dx()-16)*fraction, 2, uiPrimary)
 		}
-		fraction = min(float32(1), max(float32(0.02), fraction))
-		v.drawRect(backingWidth, backingHeight, scale, float32(statusBounds.Min.X)+8, float32(statusBounds.Max.Y)-4,
-			float32(statusBounds.Dx()-16)*fraction, 2, uiPrimary)
+	}
+	folderBounds, captureBounds := toolbarActionBounds(v.chromeInsets, v.mouseCaptureAvailable())
+	v.drawRoundedRect(backingWidth, backingHeight, scale, folderBounds, 4, uiSurfaceRaised)
+	if !captureBounds.Empty() {
+		v.drawRoundedRect(backingWidth, backingHeight, scale, captureBounds, 4, uiSurfaceRaised)
 	}
 	controls := chromeWindowControlButtons(width, platformWindowControlsAvailable())
 	for _, button := range controls {
@@ -2356,9 +2381,32 @@ func (v *displayViewer) drawAppChrome(backingWidth, backingHeight int) {
 	}
 	// Draw title-bar text after all chrome shapes so it remains on top.
 	v.text.BeginDraw()
-	v.drawCenteredTextBold(productName(), image.Rect(0, 0, int(width), int(appChromeHeight)), 13, uiText)
-	v.drawCenteredTextBold(fitStartupText(label, float32(statusBounds.Dx()-24), 13), statusBounds, 13, statusColor)
+	v.drawCenteredTextBold("Open shared folder", folderBounds, 12, uiText)
+	titleLeft := folderBounds.Max.X + 8
+	if !captureBounds.Empty() {
+		captureLabel := "Capture mouse"
+		if v.mouseCaptured {
+			captureLabel = "Release: Ctrl + Alt"
+		}
+		v.drawCenteredTextBold(captureLabel, captureBounds, 12, uiText)
+		titleLeft = captureBounds.Max.X + 8
+	}
+	titleRight := int(width-v.chromeInsets.Right) - 8
+	if v.cvmfsAvailable {
+		titleRight = statusBounds.Min.X - 8
+		v.drawCenteredTextBold(fitStartupText(label, float32(statusBounds.Dx()-24), 13), statusBounds, 13, statusColor)
+	}
+	if titleRight-titleLeft > 120 {
+		v.drawCenteredTextBold(productName(), image.Rect(titleLeft, 0, titleRight, int(appChromeHeight)), 13, uiText)
+	}
 	v.text.EndDraw()
+	if v.toolbarError != "" {
+		bounds := image.Rect(folderBounds.Min.X, int(appChromeHeight)+4, min(int(width)-8, folderBounds.Min.X+540), int(appChromeHeight)+40)
+		v.drawRoundedRect(backingWidth, backingHeight, scale, bounds, 4, uiErrorSurface)
+		v.text.BeginDraw()
+		v.drawCenteredTextBold(fitStartupText(v.toolbarError, float32(bounds.Dx()-16), 12), bounds, 12, uiError)
+		v.text.EndDraw()
+	}
 	if v.cvmfsExpanded {
 		v.drawCVMFSDetails(backingWidth, backingHeight, scale, width)
 	}
@@ -2778,6 +2826,9 @@ func (v *displayViewer) updateGuestCursor() error {
 		return nil
 	}
 	provider, ok := v.session.(display.CursorProvider)
+	if v.mouseCaptured {
+		return nil
+	}
 	if !v.desktopVisible || !ok {
 		return v.guestCursor.Apply(display.CursorUpdate{}, false)
 	}
@@ -2793,7 +2844,36 @@ func normalizedDisplayScale(scale float32) float32 {
 
 func (v *displayViewer) handleInput() error {
 	for _, event := range v.window.DrainInputEvents() {
-		if v.handleChromeInput(event) {
+		if v.mouseCaptured {
+			if event.Mods&(window.ModCtrl|window.ModAlt) == window.ModCtrl|window.ModAlt &&
+				(event.Type == window.InputEventKeyDown || event.Type == window.InputEventFlagsChanged) {
+				if err := v.setMouseCaptured(false); err != nil {
+					return err
+				}
+				continue
+			}
+			switch event.Type {
+			case window.InputEventMouseMove:
+				if err := v.sendRelativePointer(event.MouseDeltaX, event.MouseDeltaY); err != nil {
+					return err
+				}
+				continue
+			case window.InputEventMouseDown:
+				v.buttons |= mouseButtonMask(event.Button)
+				if err := v.sendRelativePointer(0, 0); err != nil {
+					return err
+				}
+				continue
+			case window.InputEventMouseUp:
+				v.buttons &^= mouseButtonMask(event.Button)
+				if err := v.sendRelativePointer(0, 0); err != nil {
+					return err
+				}
+				continue
+			}
+		}
+
+		if !v.mouseCaptured && v.handleChromeInput(event) {
 			continue
 		}
 		if event.Type == window.InputEventMouseMove {
@@ -2894,7 +2974,18 @@ func (v *displayViewer) handleChromeInput(event window.InputEvent) bool {
 			return true
 		}
 		if event.Type == window.InputEventMouseDown && event.Button == window.ButtonLeft {
-			if point.In(statusBounds) {
+			folder, capture := toolbarActionBounds(v.chromeInsets, v.mouseCaptureAvailable())
+			if point.In(folder) {
+				v.toolbarError = ""
+				if err := openSharedFolder(v.settings.SharedFolder); err != nil {
+					v.toolbarError = err.Error()
+				}
+			} else if point.In(capture) {
+				v.toolbarError = ""
+				if err := v.setMouseCaptured(true); err != nil {
+					v.toolbarError = err.Error()
+				}
+			} else if v.cvmfsAvailable && point.In(statusBounds) {
 				v.cvmfsExpanded = !v.cvmfsExpanded
 			} else if v.isTitleBarDoubleClick(point, time.Now()) {
 				toggleActiveWindowMaximized()
@@ -2952,6 +3043,9 @@ func keyboardTransitions(event window.InputEvent, wasDown, platformDown bool) []
 }
 
 func (v *displayViewer) sendScroll(deltaX120, deltaY120 int32) error {
+	if v.mouseCaptured {
+		return v.session.(display.RelativePointerSession).RelativeScroll(deltaX120, deltaY120)
+	}
 	if scroller, ok := v.session.(display.HighResolutionScroller); ok {
 		if err := scroller.Scroll(deltaX120, deltaY120); err != nil {
 			return fmt.Errorf("send scroll input: %w", err)
@@ -3058,6 +3152,7 @@ func (v *displayViewer) sendPointer(x, y float32, buttons uint8) error {
 		return fmt.Errorf("send pointer input: %w", err)
 	}
 	v.sentButtons = buttons
+	v.lastPointerX, v.lastPointerY = guestX, guestY
 	return nil
 }
 

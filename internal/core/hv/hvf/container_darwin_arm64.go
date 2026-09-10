@@ -1298,6 +1298,7 @@ func startPersistentContainer(ctx context.Context, req ContainerRunRequest, onEv
 		displayGPU = gpu
 		keyboard := virtio.NewKeyboardInput(arm64vm.KeyboardBase, arm64vm.KeyboardSize, arm64vm.KeyboardIRQ)
 		pointer := virtio.NewAbsolutePointerInput(arm64vm.PointerBase, arm64vm.PointerSize, arm64vm.PointerIRQ, req.DisplayWidth, req.DisplayHeight)
+		relativePointer := virtio.NewRelativePointerInput(arm64vm.RelativePointerBase, arm64vm.RelativePointerSize, arm64vm.RelativePointerIRQ)
 		clipboard := virtio.NewClipboard()
 		clipboardListener, err = vsockBackend.Listen(vmruntime.ClipboardPort)
 		if err != nil {
@@ -1311,13 +1312,14 @@ func startPersistentContainer(ctx context.Context, req ContainerRunRequest, onEv
 			return nil, fmt.Errorf("listen for guest display bridge: %w", err)
 		}
 		desktop = &virtio.Desktop{
-			Framebuffer: framebuffer,
-			GPU:         gpu,
-			Keyboard:    keyboard,
-			Pointer:     pointer,
-			Clipboard:   clipboard,
+			Framebuffer:     framebuffer,
+			GPU:             gpu,
+			Keyboard:        keyboard,
+			Pointer:         pointer,
+			RelativePointer: relativePointer,
+			Clipboard:       clipboard,
 		}
-		displayDevices = []virtio.MMIODevice{gpu, keyboard, pointer}
+		displayDevices = []virtio.MMIODevice{gpu, keyboard, pointer, relativePointer}
 	}
 	displayListenersOwned := true
 	defer func() {
@@ -1390,6 +1392,7 @@ func startPersistentContainer(ctx context.Context, req ContainerRunRequest, onEv
 			desktop.GPU.DeviceTreeNode(),
 			desktop.Keyboard.DeviceTreeNode(),
 			desktop.Pointer.DeviceTreeNode(),
+			desktop.RelativePointer.DeviceTreeNode(),
 		)
 	}
 	deviceNodes = append(deviceNodes, arm64vm.SnapshotDeviceNode())

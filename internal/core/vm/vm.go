@@ -482,6 +482,20 @@ func (s desktopSession) Pointer(x, y uint32, buttons, previousButtons uint8) err
 	return s.desktop.Pointer.PointerEvent(x, y, buttons, previousButtons)
 }
 
+func (s desktopSession) RelativePointer(dx, dy int32, buttons, previousButtons uint8) error {
+	if s.desktop.RelativePointer == nil {
+		return fmt.Errorf("relative pointer unavailable")
+	}
+	return s.desktop.RelativePointer.RelativePointerEvent(dx, dy, buttons, previousButtons)
+}
+
+func (s desktopSession) RelativeScroll(dx, dy int32) error {
+	if s.desktop.RelativePointer == nil {
+		return fmt.Errorf("relative pointer unavailable")
+	}
+	return s.desktop.RelativePointer.ScrollEvent(dx, dy)
+}
+
 func (s desktopSession) Scroll(deltaX120, deltaY120 int32) error {
 	if s.desktop.Pointer == nil {
 		return nil

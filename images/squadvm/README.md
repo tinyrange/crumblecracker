@@ -54,6 +54,18 @@ groups so both X11 and direct EGL applications can use the GPU. This requires
 an updated SquadVM image. Existing home directories do not need to be reset.
 Intel Macs and other hosts retain the software rendering path.
 
+The native top bar includes **Open shared folder**, which opens the currently
+configured host share in Finder, Explorer, or the host file manager. The same
+control is available in NeurodeskAppX, including windows opened by its headless API.
+
+On macOS, **Capture mouse** enables relative mouse movement for games such as
+Cube 2. Press **Control+Option** (Ctrl+Alt) to release it. Capture also releases
+when the app loses focus or closes; mouse buttons and held keys are released in
+the guest. Ordinary desktop input continues to use the absolute pointer.
+Capture requires an updated image with the `GlassRelativePointer` Xorg device;
+the control appears only after that device is ready. GPU acceleration is not
+required for mouse capture.
+
 For an opt-in release check, copy `check-gpu.sh` into the shared directory and
 run `sh /shared/check-gpu.sh` from a guest desktop terminal, without sudo.
 The image includes `glxinfo` and `eglinfo`; the check requires accelerated VirGL

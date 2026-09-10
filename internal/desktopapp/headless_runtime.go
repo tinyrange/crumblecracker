@@ -24,23 +24,25 @@ type headlessPrepared struct {
 	name  string
 }
 type headlessNativeRequest struct {
-	ctx     context.Context
-	api     *appruntime.Runtime
-	id      string
-	request headlessGlassRequest
-	ready   func(int, int)
-	done    chan error
+	sharedFolder string
+	ctx          context.Context
+	api          *appruntime.Runtime
+	id           string
+	request      headlessGlassRequest
+	ready        func(int, int)
+	done         chan error
 }
 type headlessRuntimeDriver struct {
-	mu         sync.Mutex
-	pullGate   chan struct{}
-	cache      string
-	config     Config
-	pullAPI    *appruntime.Runtime
-	prepared   map[string]headlessPrepared
-	references map[string]string
-	machines   map[string]*appruntime.Runtime
-	native     chan headlessNativeRequest
+	sharedFolders map[string]string
+	mu            sync.Mutex
+	pullGate      chan struct{}
+	cache         string
+	config        Config
+	pullAPI       *appruntime.Runtime
+	prepared      map[string]headlessPrepared
+	references    map[string]string
+	machines      map[string]*appruntime.Runtime
+	native        chan headlessNativeRequest
 }
 
 func headlessBuildVersion() string { return version.Current().Version }
@@ -342,6 +344,10 @@ func (d *headlessRuntimeDriver) Start(ctx context.Context, id string, req headle
 	}
 	d.mu.Lock()
 	d.machines[id] = api
+	if d.sharedFolders == nil {
+		d.sharedFolders = make(map[string]string)
+	}
+	d.sharedFolders[id] = share.Source
 	d.mu.Unlock()
 	if req.CVMFS.Enabled && req.CVMFS.Mirror == "auto" {
 		c := d.config.CVMFSHostMount
@@ -386,7 +392,10 @@ func (d *headlessRuntimeDriver) Glass(ctx context.Context, id string, req headle
 	if err := waitForDesktop(ctx, api, id); err != nil {
 		return err
 	}
-	native := headlessNativeRequest{ctx: ctx, api: api, id: id, request: req, ready: ready, done: make(chan error, 1)}
+	d.mu.Lock()
+	sharedFolder := d.sharedFolders[id]
+	d.mu.Unlock()
+	native := headlessNativeRequest{sharedFolder: sharedFolder, ctx: ctx, api: api, id: id, request: req, ready: ready, done: make(chan error, 1)}
 	select {
 	case d.native <- native:
 	case <-ctx.Done():
@@ -448,6 +457,7 @@ func (d *headlessRuntimeDriver) Stop(ctx context.Context, id string) error {
 	}
 	d.mu.Lock()
 	delete(d.machines, id)
+	delete(d.sharedFolders, id)
 	d.mu.Unlock()
 	return nil
 }

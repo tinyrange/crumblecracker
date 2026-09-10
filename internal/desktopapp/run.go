@@ -573,7 +573,12 @@ func Run(config Config, args []string) (retErr error) {
 				}
 				monitorDone <- err
 			}()
-			return displayStarted{Session: session, Stopped: stopped}, nil
+			captureReady := false
+			if appConfig.Kind == "squadvm" {
+				result, probeErr := api.RunInContext(ctx, *name, client.RunRequest{Command: []string{"test", "-f", "/run/user/1000/squadvm-relative-pointer-ready"}, User: "root", TimeoutSeconds: 5})
+				captureReady = probeErr == nil && result.ExitCode == 0
+			}
+			return displayStarted{Session: session, Stopped: stopped, MouseCaptureReady: captureReady}, nil
 		}
 		var cvmfsStatus cvmfsStatusSource
 		if appConfig.CVMFSHostMount != nil {

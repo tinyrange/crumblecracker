@@ -241,11 +241,12 @@ func (f *Framebuffer) Snapshot(request image.Rectangle, since uint64, incrementa
 
 // Desktop binds a scanout to the virtio input devices used by a frontend.
 type Desktop struct {
-	Framebuffer *Framebuffer
-	GPU         *GPU
-	Keyboard    *Input
-	Pointer     *Input
-	Clipboard   *Clipboard
+	Framebuffer     *Framebuffer
+	GPU             *GPU
+	Keyboard        *Input
+	Pointer         *Input
+	RelativePointer *Input
+	Clipboard       *Clipboard
 
 	resizeMu       sync.Mutex
 	resizeRequests chan DisplaySize

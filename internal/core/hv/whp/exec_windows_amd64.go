@@ -252,6 +252,7 @@ func prepareManagedVM(kernel []byte, initrd []byte, memoryMB uint64, cpus int, d
 			amd64vm.VirtioMMIODeviceArg(amd64vm.GPUBase, amd64vm.GPUIRQ),
 			amd64vm.VirtioMMIODeviceArg(amd64vm.KeyboardBase, amd64vm.KeyboardIRQ),
 			amd64vm.VirtioMMIODeviceArg(amd64vm.PointerBase, amd64vm.PointerIRQ),
+			amd64vm.VirtioMMIODeviceArg(amd64vm.RelativePointerBase, amd64vm.RelativePointerIRQ),
 		)
 	}
 	rng := virtio.NewRNG(amd64vm.RNGBase, amd64vm.RNGSize, amd64vm.RNGIRQ)

@@ -130,7 +130,10 @@ func openHeadlessDisplay(request headlessNativeRequest) error {
 	if err != nil {
 		return headlessFailure("display_unavailable", "Cannot open a native window in this graphical session")
 	}
-	viewer := &displayViewer{window: win, session: session, guestCursor: newGuestCursorHost(), keysDown: make(map[window.Key]bool), updateConsumedKeys: make(map[window.Key]bool), parentContext: request.ctx, settings: startupOptions{DisplayWidth: request.request.Width, DisplayHeight: request.request.Height}, startup: initialStartupProgress(), onPresentation: request.ready}
+	viewer := &displayViewer{chromeEnabled: true, window: win, session: session, guestCursor: newGuestCursorHost(), keysDown: make(map[window.Key]bool), updateConsumedKeys: make(map[window.Key]bool), parentContext: request.ctx, settings: startupOptions{SharedFolder: request.sharedFolder, DisplayWidth: request.request.Width, DisplayHeight: request.request.Height}, startup: initialStartupProgress(), onPresentation: request.ready}
+	if chrome, ok := win.(window.IntegratedTitleBarSupport); ok && chrome.SetIntegratedTitleBar(true) {
+		viewer.chromeInsets = chrome.IntegratedTitleBarInsets()
+	}
 	if err := viewer.init(); err != nil {
 		if viewer.gl != nil {
 			viewer.close()
