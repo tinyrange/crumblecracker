@@ -3,9 +3,11 @@
 package virtio
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"os"
 
@@ -22,6 +24,23 @@ type hostUnixMetadata struct {
 	Mode    *uint32 `json:"mode,omitempty"`
 	UID     *uint32 `json:"uid,omitempty"`
 	GID     *uint32 `json:"gid,omitempty"`
+}
+
+// Alternate fixed-size JSON records keep the previous durable value available
+// when a write is interrupted. The lock serializes readers and writers across
+// mounts and processes; the checksum rejects a torn record.
+const hostMetadataSlotSize = 512
+
+type hostMetadataRecord struct {
+	Generation uint64           `json:"generation"`
+	Metadata   hostUnixMetadata `json:"metadata"`
+	Checksum   uint32           `json:"checksum"`
+}
+
+func (r hostMetadataRecord) checksum() uint32 {
+	r.Checksum = 0
+	data, _ := json.Marshal(r)
+	return crc32.ChecksumIEEE(data)
 }
 
 func withHostMetadata(path string, update func(*hostUnixMetadata)) (hostUnixMetadata, error) {
@@ -47,36 +66,48 @@ func withHostMetadata(path string, update func(*hostUnixMetadata)) (hostUnixMeta
 		return hostUnixMetadata{}, err
 	}
 	defer windows.UnlockFileEx(handle, 0, 1, 0, &offset)
-	data, err := io.ReadAll(io.LimitReader(file, 4097))
+	data, err := io.ReadAll(io.LimitReader(file, 2*hostMetadataSlotSize+1))
 	if err != nil {
 		return hostUnixMetadata{}, err
 	}
-	meta := hostUnixMetadata{Version: 1}
-	if len(data) > 4096 {
-		return meta, fmt.Errorf("shared file Unix metadata too large")
+	if len(data) > 2*hostMetadataSlotSize {
+		return hostUnixMetadata{}, fmt.Errorf("shared file Unix metadata too large")
 	}
-	if len(data) != 0 {
-		if err := json.Unmarshal(data, &meta); err != nil {
-			return meta, fmt.Errorf("decode shared file Unix metadata: %w", err)
+	current := hostMetadataRecord{Metadata: hostUnixMetadata{Version: 1}}
+	for slot := 0; slot < 2; slot++ {
+		begin := slot * hostMetadataSlotSize
+		if begin >= len(data) {
+			continue
 		}
-		if meta.Version != 1 {
-			return meta, fmt.Errorf("unsupported shared file Unix metadata version")
+		raw := bytes.TrimRight(data[begin:min(begin+hostMetadataSlotSize, len(data))], "\x00")
+		var record hostMetadataRecord
+		if json.Unmarshal(raw, &record) == nil && record.Metadata.Version == 1 && record.Generation > current.Generation && record.Checksum == record.checksum() {
+			current = record
 		}
 	}
+	if len(data) != 0 && current.Generation == 0 {
+		return current.Metadata, fmt.Errorf("shared file Unix metadata has no valid record")
+	}
+	meta := current.Metadata
 	if update == nil {
 		return meta, nil
 	}
 	update(&meta)
-	data, err = json.Marshal(meta)
+	next := hostMetadataRecord{Generation: current.Generation + 1, Metadata: meta}
+	next.Checksum = next.checksum()
+	encoded, err := json.Marshal(next)
 	if err != nil {
 		return meta, err
 	}
-	if _, err = file.WriteAt(data, 0); err != nil {
+	if len(encoded) > hostMetadataSlotSize {
+		return meta, fmt.Errorf("shared file Unix metadata exceeds record capacity")
+	}
+	var record [hostMetadataSlotSize]byte
+	copy(record[:], encoded)
+	if _, err := file.WriteAt(record[:], int64(next.Generation%2)*hostMetadataSlotSize); err != nil {
 		return meta, err
 	}
-	if err = file.Truncate(int64(len(data))); err != nil {
-		return meta, err
-	}
+
 	return meta, file.Sync()
 }
 func setHostMode(path string, mode uint32) error {

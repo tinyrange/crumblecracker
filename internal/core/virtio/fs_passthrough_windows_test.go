@@ -5,6 +5,7 @@ package virtio
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -79,5 +80,74 @@ func TestWindowsSharedDirectoryPermissionsPersist(t *testing.T) {
 	}
 	if errno := fsys.RmDir(1, "private"); errno != 0 {
 		t.Fatalf("directory metadata prevented rmdir: %d", errno)
+	}
+}
+
+func TestWindowsSharedMetadataRecoversPreviousCompleteUpdate(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(name, []byte("contents"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := initHostMetadata(name, 0600, 1000, 1000); err != nil {
+		t.Fatal(err)
+	}
+	if err := setHostMode(name, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(name+hostMetadataStream, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Corrupt the newer generation's record, leaving the previous one intact.
+	if _, err := file.WriteAt([]byte("torn"), 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var attr FuseAttr
+	if err := applyHostMetadata(name, &attr); err != nil {
+		t.Fatal(err)
+	}
+	if attr.Mode&linuxPermMask != 0600 || attr.UID != 1000 {
+		t.Fatalf("previous metadata lost: %+v", attr)
+	}
+	if err := setHostMode(name, 0750); err != nil {
+		t.Fatal(err)
+	}
+	if err := applyHostMetadata(name, &attr); err != nil || attr.Mode&linuxPermMask != 0750 {
+		t.Fatalf("metadata recovery failed: %+v %v", attr, err)
+	}
+}
+
+func TestWindowsSharedOwnershipUpdatesAcrossAttachments(t *testing.T) {
+	root := t.TempDir()
+	name := filepath.Join(root, "file")
+	if err := os.WriteFile(name, []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(name, filepath.Join(root, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for _, entry := range []struct {
+		path            string
+		valid, uid, gid uint32
+	}{{name, fattrUID, 1000, 0}, {filepath.Join(root, "alias"), fattrGID, 0, 200}} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 20 {
+				if err := setHostOwner(entry.path, entry.valid, entry.uid, entry.gid); err != nil {
+					t.Error(err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	var attr FuseAttr
+	if err := applyHostMetadata(name, &attr); err != nil || attr.UID != 1000 || attr.GID != 200 {
+		t.Fatalf("concurrent ownership updates lost: %+v %v", attr, err)
 	}
 }
