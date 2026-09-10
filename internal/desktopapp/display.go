@@ -9,6 +9,7 @@ import (
 	imagedraw "image/draw"
 	"image/png"
 	"math"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -143,6 +144,7 @@ type displayViewer struct {
 	keysDown            map[window.Key]bool
 	guestClipboardGen   uint64
 	hostClipboard       string
+	hostClipboardKnown  bool
 	lastResize          image.Point
 	pendingResize       image.Point
 	resizeChangedAt     time.Time
@@ -596,8 +598,16 @@ func (v *displayViewer) close() {
 }
 
 func (v *displayViewer) loop(ctx context.Context) error {
-	clipboard := window.GetClipboard()
-	v.hostClipboard = clipboard.GetText()
+	clipboard, err := newHostClipboard()
+	if err != nil {
+		return err
+	}
+	defer clipboard.Close()
+	if text, err := clipboard.ReadText(); err == nil {
+		v.hostClipboard = text
+		v.hostClipboardKnown = true
+	}
+	v.attachHostClipboard()
 	nextClipboardCheck := time.Now()
 	for v.window.Poll() {
 		v.drainStartupSerial()
@@ -644,7 +654,7 @@ func (v *displayViewer) loop(ctx context.Context) error {
 					}
 					v.lastResize = image.Pt(v.settings.DisplayWidth, v.settings.DisplayHeight)
 					v.attemptStopped = result.started.Stopped
-					v.session.SetClipboard(v.hostClipboard)
+					v.attachHostClipboard()
 					v.presentation.markGuestReady()
 					v.setStartupProgress(desktopStartupProgress("Waiting for a complete desktop frame"))
 				}
@@ -697,10 +707,11 @@ func (v *displayViewer) loop(ctx context.Context) error {
 			}
 		}
 		if v.desktopVisible && time.Now().After(nextClipboardCheck) {
-			if err := v.syncClipboard(clipboard); err != nil {
-				return err
-			}
 			nextClipboardCheck = time.Now().Add(200 * time.Millisecond)
+			if err := v.syncClipboard(clipboard); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				nextClipboardCheck = time.Now().Add(time.Second)
+			}
 		}
 		if v.session != nil {
 			update, err := v.updateTexture()
@@ -3050,8 +3061,21 @@ func (v *displayViewer) sendPointer(x, y float32, buttons uint8) error {
 	return nil
 }
 
-func (v *displayViewer) syncClipboard(clipboard window.Clipboard) error {
-	hostText := clipboard.GetText()
+// Seed already-running sessions too (headless Glass and window reopen). Ignore
+// the guest generation observed before attaching so stale text cannot echo back
+// over the host clipboard on the first poll.
+func (v *displayViewer) attachHostClipboard() {
+	if v.session != nil && v.hostClipboardKnown {
+		_, v.guestClipboardGen = v.session.GuestClipboard()
+		v.session.SetClipboard(v.hostClipboard)
+	}
+}
+
+func (v *displayViewer) syncClipboard(clipboard hostClipboard) error {
+	hostText, err := clipboard.ReadText()
+	if err != nil {
+		return err
+	}
 	guestText, guestGeneration := v.session.GuestClipboard()
 	decision := reconcileClipboard(
 		v.hostClipboard,
@@ -3060,8 +3084,6 @@ func (v *displayViewer) syncClipboard(clipboard window.Clipboard) error {
 		guestText,
 		guestGeneration,
 	)
-	v.hostClipboard = decision.text
-	v.guestClipboardGen = decision.guestGeneration
 	if decision.sendToGuest {
 		v.session.SetClipboard(decision.text)
 	}
@@ -3070,6 +3092,9 @@ func (v *displayViewer) syncClipboard(clipboard window.Clipboard) error {
 			return fmt.Errorf("update host clipboard: %w", err)
 		}
 	}
+	v.hostClipboard = decision.text
+	v.hostClipboardKnown = true
+	v.guestClipboardGen = decision.guestGeneration
 	return nil
 }
 

@@ -1,6 +1,9 @@
 package desktopapp
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestClipboardReconciliationPreservesNewestSide(t *testing.T) {
 	tests := []struct {
@@ -40,5 +43,86 @@ func TestClipboardReconciliationPreservesNewestSide(t *testing.T) {
 				t.Fatalf("clipboard decision = %+v, want %+v", got, test.want)
 			}
 		})
+	}
+}
+
+type clipboardTestHost struct {
+	text              string
+	readErr, writeErr error
+}
+
+func (c *clipboardTestHost) ReadText() (string, error) { return c.text, c.readErr }
+func (c *clipboardTestHost) SetText(text string) error {
+	if c.writeErr != nil {
+		return c.writeErr
+	}
+	c.text = text
+	return nil
+}
+func (*clipboardTestHost) Close() {}
+
+type clipboardTestSession struct {
+	resizeTestSession
+	text       string
+	generation uint64
+	sent       []string
+}
+
+func (s *clipboardTestSession) GuestClipboard() (string, uint64) { return s.text, s.generation }
+func (s *clipboardTestSession) SetClipboard(text string)         { s.sent = append(s.sent, text) }
+
+func TestClipboardFailuresRetryWithoutLosingGuestUpdate(t *testing.T) {
+	session := &clipboardTestSession{text: "guest text", generation: 1}
+	host := &clipboardTestHost{text: "old", writeErr: fmt.Errorf("clipboard busy")}
+	viewer := &displayViewer{session: session, hostClipboard: "old"}
+	if err := viewer.syncClipboard(host); err == nil {
+		t.Fatal("failed write acknowledged")
+	}
+	if viewer.guestClipboardGen != 0 || viewer.hostClipboard != "old" {
+		t.Fatal("failed write consumed pending guest text")
+	}
+	host.writeErr = nil
+	if err := viewer.syncClipboard(host); err != nil {
+		t.Fatal(err)
+	}
+	if host.text != "guest text" || viewer.guestClipboardGen != 1 {
+		t.Fatal("guest clipboard was not retried")
+	}
+	host.readErr = fmt.Errorf("clipboard busy")
+	host.text = ""
+	if err := viewer.syncClipboard(host); err == nil {
+		t.Fatal("failed read accepted")
+	}
+	if len(session.sent) != 0 {
+		t.Fatal("read failure erased guest clipboard")
+	}
+	host.readErr = nil
+	host.text = "host text"
+	if err := viewer.syncClipboard(host); err != nil {
+		t.Fatal(err)
+	}
+	if len(session.sent) != 1 || session.sent[0] != "host text" {
+		t.Fatal("host update was not delivered")
+	}
+}
+
+func TestClipboardAttachSeedsExistingSessionWithoutStaleEcho(t *testing.T) {
+	session := &clipboardTestSession{text: "old guest text", generation: 4}
+	viewer := &displayViewer{session: session, hostClipboard: "host text", hostClipboardKnown: true}
+	viewer.attachHostClipboard()
+	host := &clipboardTestHost{text: "host text"}
+	if err := viewer.syncClipboard(host); err != nil {
+		t.Fatal(err)
+	}
+	if len(session.sent) != 1 || session.sent[0] != "host text" || host.text != "host text" {
+		t.Fatal("attachment lost host clipboard or echoed stale guest text")
+	}
+	session.text = "new guest text"
+	session.generation++
+	if err := viewer.syncClipboard(host); err != nil {
+		t.Fatal(err)
+	}
+	if host.text != "new guest text" {
+		t.Fatal("attachment suppressed subsequent guest update")
 	}
 }

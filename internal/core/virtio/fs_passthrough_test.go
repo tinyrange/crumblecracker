@@ -281,3 +281,41 @@ func parseTestFuseDirents(data []byte) map[string]uint64 {
 	}
 	return out
 }
+
+func TestPassthroughOpenHandlesAllowRenameAndUnlink(t *testing.T) {
+	root := t.TempDir()
+	first := NewPassthroughFS(root, nil).(*passthroughFS)
+	node, fh, _, errno := first.Create(1, "file", linuxORDWR, 0600, 1000, 1000)
+	if errno != 0 {
+		t.Fatal(errno)
+	}
+	defer first.Release(node, fh)
+	if _, errno := first.Write(node, fh, 0, []byte("original"), 0); errno != 0 {
+		t.Fatal(errno)
+	}
+	second := NewPassthroughFS(root, nil).(*passthroughFS)
+	alias, _, errno := second.Lookup(1, "file")
+	if errno != 0 {
+		t.Fatal(errno)
+	}
+	other, errno := second.Open(alias, linuxORDONLY)
+	if errno != 0 {
+		t.Fatal(errno)
+	}
+	defer second.Release(alias, other)
+	if errno := first.Rename(1, "file", 1, "renamed", 0); errno != 0 {
+		t.Fatalf("rename open file: %d", errno)
+	}
+	if errno := first.Unlink(1, "renamed"); errno != 0 {
+		t.Fatalf("unlink open file: %d", errno)
+	}
+	for _, handle := range []struct {
+		fs       *passthroughFS
+		node, fh uint64
+	}{{first, node, fh}, {second, alias, other}} {
+		data, errno := handle.fs.Read(handle.node, handle.fh, 0, 20)
+		if errno != 0 || string(data) != "original" {
+			t.Fatalf("open file data %q errno %d", data, errno)
+		}
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/tinyrange/crumblecracker/internal/core/fsmeta"
+	"github.com/tinyrange/crumblecracker/internal/core/hostfile"
 	"github.com/tinyrange/crumblecracker/internal/core/imagefs"
 	"github.com/tinyrange/crumblecracker/internal/core/linuxabi"
 )
@@ -630,7 +631,7 @@ func (p *passthroughFS) GetAttr(nodeID uint64) (FuseAttr, int32) {
 	if err != nil {
 		return FuseAttr{}, errnoFromError(err)
 	}
-	return p.fileAttr(nodeID, host, info), 0
+	return p.fileAttr(nodeID, host, info)
 }
 
 func (p *passthroughFS) Lookup(parent uint64, name string) (uint64, FuseAttr, int32) {
@@ -666,7 +667,8 @@ func (p *passthroughFS) Lookup(parent uint64, name string) (uint64, FuseAttr, in
 		p.logf("lookup name=%q guest=%q host=%q", name, guestPath, host)
 	}
 	nodeID := p.ensureNode(guestPath)
-	return nodeID, p.fileAttr(nodeID, host, info), 0
+	attr, errno := p.fileAttr(nodeID, host, info)
+	return nodeID, attr, errno
 }
 
 func (p *passthroughFS) Mkdir(parent uint64, name string, mode uint32, uid uint32, gid uint32) (uint64, FuseAttr, int32) {
@@ -681,6 +683,10 @@ func (p *passthroughFS) Mkdir(parent uint64, name string, mode uint32, uid uint3
 	}
 	host := filepath.Join(hostParent, filepath.FromSlash(rel))
 	if err := os.Mkdir(host, fs.FileMode(mode&linuxPermMask)); err != nil {
+		return 0, FuseAttr{}, errnoFromError(err)
+	}
+	if err := initHostMetadata(host, mode, uid, gid); err != nil {
+		_ = os.Remove(host)
 		return 0, FuseAttr{}, errnoFromError(err)
 	}
 	info, err := os.Lstat(host)
@@ -700,7 +706,8 @@ func (p *passthroughFS) Mkdir(parent uint64, name string, mode uint32, uid uint3
 		p.mu.Unlock()
 	}
 	nodeID := p.ensureNode(guestPath)
-	return nodeID, p.fileAttr(nodeID, host, info), 0
+	attr, errno := p.fileAttr(nodeID, host, info)
+	return nodeID, attr, errno
 }
 
 func (p *passthroughFS) Symlink(parent uint64, name string, target string, uid uint32, gid uint32) (uint64, FuseAttr, int32) {
@@ -733,7 +740,8 @@ func (p *passthroughFS) Symlink(parent uint64, name string, target string, uid u
 		p.mu.Unlock()
 	}
 	nodeID := p.ensureNode(guestPath)
-	return nodeID, p.fileAttr(nodeID, host, info), 0
+	attr, errno := p.fileAttr(nodeID, host, info)
+	return nodeID, attr, errno
 }
 
 func (p *passthroughFS) Link(nodeID uint64, newParent uint64, newName string) (uint64, FuseAttr, int32) {
@@ -759,7 +767,8 @@ func (p *passthroughFS) Link(nodeID uint64, newParent uint64, newName string) (u
 	}
 	guestPath := joinGuestChild(guestParent, rel)
 	newNodeID := p.ensureNode(guestPath)
-	return newNodeID, p.fileAttr(newNodeID, dst, info), 0
+	attr, errno := p.fileAttr(newNodeID, dst, info)
+	return newNodeID, attr, errno
 }
 
 func (p *passthroughFS) Create(parent uint64, name string, flags uint32, mode uint32, uid uint32, gid uint32) (uint64, uint64, FuseAttr, int32) {
@@ -773,9 +782,23 @@ func (p *passthroughFS) Create(parent uint64, name string, flags uint32, mode ui
 		return 0, 0, FuseAttr{}, -linuxEINVAL
 	}
 	host := filepath.Join(hostParent, filepath.FromSlash(rel))
-	file, err := os.OpenFile(host, p.translateOpenFlags(flags)|os.O_CREATE, fs.FileMode(mode&linuxPermMask))
+	// Distinguish creation from opening an existing file without a stat/open
+	// race, so O_CREAT cannot reset an existing file's ownership or mode.
+	openFlags := p.translateOpenFlags(flags)
+	file, err := hostfile.OpenFile(host, openFlags|os.O_CREATE|os.O_EXCL, fs.FileMode(mode&linuxPermMask))
+	created := err == nil
+	if errors.Is(err, os.ErrExist) && flags&linuxOEXCL == 0 {
+		file, err = hostfile.OpenFile(host, openFlags&^(os.O_CREATE|os.O_EXCL), 0)
+	}
 	if err != nil {
 		return 0, 0, FuseAttr{}, errnoFromError(err)
+	}
+	if created {
+		if err := initHostMetadata(host, mode, uid, gid); err != nil {
+			_ = file.Close()
+			_ = os.Remove(host)
+			return 0, 0, FuseAttr{}, errnoFromError(err)
+		}
 	}
 	info, err := os.Lstat(host)
 	if err != nil {
@@ -798,7 +821,12 @@ func (p *passthroughFS) Create(parent uint64, name string, flags uint32, mode ui
 	p.nextHandle++
 	p.handles[handle] = &passthroughHandle{nodeID: nodeID, file: file, append: flags&linuxOAPPEND != 0}
 	p.mu.Unlock()
-	return nodeID, handle, p.fileAttr(nodeID, host, info), 0
+	attr, errno := p.fileAttr(nodeID, host, info)
+	if errno != 0 {
+		p.Release(nodeID, handle)
+		return 0, 0, FuseAttr{}, errno
+	}
+	return nodeID, handle, attr, 0
 }
 
 func (p *passthroughFS) Open(nodeID uint64, flags uint32) (uint64, int32) {
@@ -814,7 +842,7 @@ func (p *passthroughFS) Open(nodeID uint64, flags uint32) (uint64, int32) {
 	if info.IsDir() {
 		return 0, -linuxEISDIR
 	}
-	file, err := os.OpenFile(host, p.translateOpenFlags(flags), 0)
+	file, err := hostfile.OpenFile(host, p.translateOpenFlags(flags), 0)
 	if err != nil {
 		return 0, errnoFromError(err)
 	}
@@ -1175,12 +1203,12 @@ func (p *passthroughFS) SetAttr(nodeID uint64, valid uint32, fh uint64, size uin
 		}
 	}
 	if valid&fattrMode != 0 {
-		if err := os.Chmod(host, fs.FileMode(mode&linuxPermMask)); err != nil {
+		if err := setHostMode(host, mode); err != nil {
 			return FuseAttr{}, errnoFromError(err)
 		}
 	}
 	if valid&(fattrUID|fattrGID) != 0 {
-		if err := os.Chown(host, int(uid), int(gid)); err != nil {
+		if err := setHostOwner(host, valid, uid, gid); err != nil {
 			return FuseAttr{}, errnoFromError(err)
 		}
 	}
@@ -1200,7 +1228,7 @@ func (p *passthroughFS) SetAttr(nodeID uint64, valid uint32, fh uint64, size uin
 	if err != nil {
 		return FuseAttr{}, errnoFromError(err)
 	}
-	return p.fileAttr(nodeID, host, info), 0
+	return p.fileAttr(nodeID, host, info)
 }
 
 func (p *passthroughFS) StatFS(_ uint64) (uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, int32) {
@@ -1365,7 +1393,7 @@ func hostDirectoryHasExactEntry(hostPath string) bool {
 	return false
 }
 
-func (p *passthroughFS) fileAttr(nodeID uint64, hostPath string, info os.FileInfo) FuseAttr {
+func (p *passthroughFS) fileAttr(nodeID uint64, hostPath string, info os.FileInfo) (FuseAttr, int32) {
 	mode := goModeToLinux(info.Mode())
 	if mode&os.ModeType == 0 {
 		mode |= 0
@@ -1417,7 +1445,10 @@ func (p *passthroughFS) fileAttr(nodeID uint64, hostPath string, info os.FileInf
 	if info.IsDir() {
 		attr.NLink = maxU32(attr.NLink, 2)
 	}
-	return attr
+	if err := applyHostMetadata(hostPath, &attr); err != nil {
+		return FuseAttr{}, errnoFromError(err)
+	}
+	return attr, 0
 }
 
 func (p *imageFS) pathForNode(id uint64) string {

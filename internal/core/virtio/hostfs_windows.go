@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/tinyrange/crumblecracker/internal/core/hostfile"
 	"github.com/tinyrange/crumblecracker/internal/core/linuxabi"
 	"golang.org/x/sys/windows"
 )
@@ -32,7 +33,7 @@ func enrichHostFileAttr(hostPath string, info os.FileInfo, attr *FuseAttr) {
 	if info == nil || info.Mode()&os.ModeSymlink != 0 {
 		return
 	}
-	file, err := os.Open(hostPath)
+	file, err := hostfile.OpenFile(hostPath, os.O_RDONLY, 0)
 	if err != nil {
 		return
 	}

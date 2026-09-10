@@ -130,6 +130,7 @@ COPY xorg.conf /etc/X11/xorg.conf
 COPY squadvm-wallpaper.svg squadvm-icon.svg /usr/share/squadvm/
 COPY cyber-squad-special.png /usr/share/squadvm/
 COPY skel/ /usr/share/squadvm/skel/
+COPY skel/Desktop/squadvm-editor.desktop /usr/share/applications/squadvm-editor.desktop
 COPY firefox-policies.json /usr/lib/firefox-esr/distribution/policies.json
 
 RUN curl --fail --location --silent --show-error \
@@ -162,6 +163,8 @@ RUN curl --fail --location --silent --show-error \
         /usr/share/doc/ghidra/GhidraClass/AdvancedDevelopment/Images/GhidraLogo64.png \
         /usr/share/icons/hicolor/64x64/apps/squadvm-ghidra.png \
     && gtk-update-icon-cache --force /usr/share/icons/hicolor \
+    && test -x /usr/bin/gedit \
+    && desktop-file-validate /usr/share/applications/squadvm-editor.desktop \
     && update-desktop-database /usr/share/applications \
     && rm -f /tmp/cyber-squad-logo.svg \
 	&& chmod 0755 \
