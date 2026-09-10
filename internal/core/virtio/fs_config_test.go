@@ -38,6 +38,9 @@ func TestVirtioFSKickPollingRequiresExplicitOptIn(t *testing.T) {
 
 func TestVirtioFSQueueTreatsRequestsAsOpaque(t *testing.T) {
 	dev := NewFS(0, 0, 0, "test", nil)
+	dev.Attach(make(testGuestMemory, 0x2000), &testIRQ{})
+	dev.queues[fsQueueRequest].size = 8
+	dev.queues[fsQueueRequest].usedAddr = 0x1000
 	dispatcher := &recordingFSDispatcher{}
 	dev.dispatcher = dispatcher
 	raw := []byte{0xff, 0x00, 0x7f, 0x80, 0x01}
@@ -210,5 +213,47 @@ func TestVirtioFSMountedExchangeFailsInsteadOfReportingUnsafeSuccess(t *testing.
 			t.Fatalf("%s changed to %q after rejected exchange", name, got)
 		}
 		backend.Release(nodeID, fh)
+	}
+}
+
+func TestVirtioFSForgetReturnsDescriptorWithoutResponse(t *testing.T) {
+	for _, async := range []bool{false, true} {
+		t.Run(map[bool]string{false: "inline", true: "async"}[async], func(t *testing.T) {
+			mem := make(testGuestMemory, 0x3000)
+			dev := NewFS(0, 0x1000, 11, "test", inertFSBackend{})
+			defer dev.Close()
+			dev.Attach(mem, &testIRQ{})
+			q := &dev.queues[0]
+			q.size = 8
+			q.ready = true
+			q.availAddr = 0x1000
+			q.usedAddr = 0x2000
+			raw := make([]byte, fuseInHeaderSize+8)
+			binary.LittleEndian.PutUint32(raw[:4], uint32(len(raw)))
+			binary.LittleEndian.PutUint32(raw[4:8], fuseForget)
+			work := fsWork{qidx: 0, head: 3, generation: dev.configGeneration, req: raw}
+			var err error
+			if async {
+				result, dispatchErr := dev.dispatcher.Dispatch(raw)
+				err = dev.completeWork(work, result.reply, dispatchErr)
+			} else {
+				err = dev.processWorksInline([]fsWork{work})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := binary.LittleEndian.Uint16(mem[0x2002:]); got != 1 {
+				t.Fatalf("used index = %d", got)
+			}
+			if got := binary.LittleEndian.Uint32(mem[0x2004:]); got != 3 {
+				t.Fatalf("returned head = %d", got)
+			}
+			if got := binary.LittleEndian.Uint32(mem[0x2008:]); got != 0 {
+				t.Fatalf("FORGET wrote %d response bytes", got)
+			}
+			if dev.interruptStatus&fsInterruptVring == 0 {
+				t.Fatal("guest was not notified")
+			}
+		})
 	}
 }

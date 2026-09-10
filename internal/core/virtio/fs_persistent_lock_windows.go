@@ -3,6 +3,7 @@
 package virtio
 
 import (
+	"errors"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -26,3 +27,5 @@ func replacePersistentFile(source, target string) error {
 func syncPersistentDirectory(string) error {
 	return nil
 }
+
+func persistentLockBusy(err error) bool { return errors.Is(err, windows.ERROR_LOCK_VIOLATION) }

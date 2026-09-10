@@ -4,6 +4,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"syscall"
 )
 
@@ -15,6 +16,13 @@ var (
 )
 
 func platformArguments(args []string) []string {
+	// Preserve Electron's inherited pipes in headless mode; attaching the
+	// parent's console replaces stdout and breaks the readiness handshake.
+	for _, arg := range args {
+		if strings.TrimLeft(strings.SplitN(arg, "=", 2)[0], "-") == "headless" {
+			return args
+		}
+	}
 	attachParentConsole()
 	if len(args) != 0 {
 		return args

@@ -612,6 +612,7 @@ func (s *Store) PlanPull(ctx context.Context, name, source string, options ...Pu
 	if len(options) > 0 {
 		opts = options[0]
 	}
+	ctx = context.WithValue(ctx, metadataProgressKey{}, opts.Report)
 	architecture := firstNonEmpty(normalizeArchitecture(opts.Architecture), nativeArch())
 	plan := client.ImagePullPlan{
 		Name:         name,
@@ -1171,6 +1172,7 @@ func (s *Store) pullOCIDirect(ctx context.Context, name string, spec SourceSpec,
 		defer reportMu.Unlock()
 		reportPullProgress(options.Report, event)
 	}
+	ctx = context.WithValue(ctx, metadataProgressKey{}, report)
 	report(client.ProgressEvent{Status: "resolving", Artifact: name, Blob: "manifest"})
 	registry, imageName, tag, err := ParseImageRef(spec.Raw)
 	if err != nil {
@@ -1211,6 +1213,7 @@ func (s *Store) pullOCIDirect(ctx context.Context, name string, spec SourceSpec,
 	var pipelineMu sync.Mutex
 	build := newIndexedBuildState()
 	prepareStarted := time.Now()
+	networkByLayer := make([]int64, len(mani.Layers))
 	downloadedByLayer := make([]int64, len(mani.Layers))
 	indexedByLayer := make([]int64, len(mani.Layers))
 	downloadRateByLayer := make([]float64, len(mani.Layers))
@@ -1228,9 +1231,20 @@ func (s *Store) pullOCIDirect(ctx context.Context, name string, spec SourceSpec,
 			}
 		}
 	}
+	for i, layer := range mani.Layers {
+		state := "queued"
+		if downloadedByLayer[i] == layer.Size {
+			state = "cached"
+		}
+		report(client.ProgressEvent{Artifact: name, Blob: layer.Digest, Transfer: &client.TransferProgress{ID: layer.Digest, Kind: "image_layer", State: state, Completed: downloadedByLayer[i], Total: layer.Size}})
+	}
+	report(client.ProgressEvent{Artifact: name, PlanningComplete: true})
 	reportPipeline := func(layerIndex int, layer descriptor, downloaded, indexed *int64, downloadRate *float64) {
 		pipelineMu.Lock()
 		if downloaded != nil {
+			if downloadRate != nil {
+				networkByLayer[layerIndex] += max(0, *downloaded-downloadedByLayer[layerIndex])
+			}
 			downloadedByLayer[layerIndex] = min(layer.Size, max(0, *downloaded))
 		}
 		if indexed != nil {
@@ -1252,6 +1266,17 @@ func (s *Store) pullOCIDirect(ctx context.Context, name string, spec SourceSpec,
 		downloadProgress := ratio(downloadedBytes, totalLayerBytes)
 		indexProgress := ratio(indexedBytes, totalLayerBytes)
 		progress := ratio(downloadedBytes+indexedBytes, totalLayerBytes*2)
+		transferState := "downloading"
+		if downloadedByLayer[layerIndex] >= layer.Size {
+			transferState = "preparing"
+		}
+		if indexedByLayer[layerIndex] >= layer.Size {
+			transferState = "ready"
+		}
+		transfer := &client.TransferProgress{ID: layer.Digest, Kind: "image_layer", State: transferState, Completed: downloadedByLayer[layerIndex], Total: layer.Size, NetworkBytes: networkByLayer[layerIndex]}
+		if networkByLayer[layerIndex] == 0 && indexedByLayer[layerIndex] >= layer.Size {
+			transfer.State = "cached"
+		}
 		pipelineMu.Unlock()
 		elapsed := time.Since(prepareStarted).Seconds()
 		var eta float64
@@ -1263,6 +1288,7 @@ func (s *Store) pullOCIDirect(ctx context.Context, name string, spec SourceSpec,
 			status = "downloading"
 		}
 		report(client.ProgressEvent{
+			Transfer:           transfer,
 			Status:             status,
 			Artifact:           name,
 			Blob:               layer.Digest,
@@ -1602,6 +1628,12 @@ func (s *Store) fetchManifest(ctx context.Context, reg *registryContext, imageNa
 		return manifest{}, "", err
 	}
 
+	if strings.HasPrefix(tag, "sha256:") {
+		actual := sha256.Sum256(body)
+		if "sha256:"+hex.EncodeToString(actual[:]) != tag {
+			return manifest{}, "", &download.DigestError{Expected: tag, Actual: "sha256:" + hex.EncodeToString(actual[:])}
+		}
+	}
 	if isManifestMediaType(mediaType) {
 		var mani manifest
 		if err := json.Unmarshal(body, &mani); err != nil {
@@ -1624,6 +1656,10 @@ func (s *Store) fetchManifest(ctx context.Context, reg *registryContext, imageNa
 				})
 				if err != nil {
 					return manifest{}, "", err
+				}
+				actual := sha256.Sum256(body)
+				if "sha256:"+hex.EncodeToString(actual[:]) != entry.Digest {
+					return manifest{}, "", &download.DigestError{Expected: entry.Digest, Actual: "sha256:" + hex.EncodeToString(actual[:])}
 				}
 				var mani manifest
 				if err := json.Unmarshal(body, &mani); err != nil {
@@ -1656,6 +1692,7 @@ func resolvedOCISource(registry, imageName, digest string) string {
 func (s *Store) fetchBlob(ctx context.Context, reg *registryContext, imageName string, blob descriptor) ([]byte, error) {
 	blobPath := filepath.Join(s.root, "_blobs", digestToFileName(blob.Digest))
 	if data, err := os.ReadFile(blobPath); err == nil {
+		metadataProgress(ctx, "config:"+blob.Digest, "image_config", "cached", 0, 0, 0)
 		return data, nil
 	}
 
@@ -2424,6 +2461,7 @@ func (s *Store) getJSONBlob(ctx context.Context, reg *registryContext, path stri
 }
 
 func (s *Store) getJSONBlobWithDigest(ctx context.Context, reg *registryContext, path string, accept []string) ([]byte, string, string, error) {
+	metadataProgress(ctx, "manifest:"+path, "image_manifest", "resolving", 0, -1, 0)
 	resp, err := reg.do(ctx, path, accept)
 	if err != nil {
 		return nil, "", "", err
@@ -2441,10 +2479,12 @@ func (s *Store) getJSONBlobWithDigest(ctx context.Context, reg *registryContext,
 	} else if strings.HasPrefix(digest, "sha256:") && !strings.EqualFold(digest, actualDigest) {
 		return nil, "", "", &download.DigestError{Expected: digest, Actual: actualDigest}
 	}
+	metadataProgress(ctx, "manifest:"+path, "image_manifest", "ready", int64(len(data)), int64(len(data)), int64(len(data)))
 	return data, resp.Header.Get("Content-Type"), digest, nil
 }
 
 func (s *Store) getRawBlob(ctx context.Context, reg *registryContext, path string, blob descriptor) ([]byte, error) {
+	metadataProgress(ctx, "config:"+blob.Digest, "image_config", "queued", 0, blob.Size, 0)
 	resp, err := reg.do(ctx, path, nil)
 	if err != nil {
 		return nil, err
@@ -2457,6 +2497,7 @@ func (s *Store) getRawBlob(ctx context.Context, reg *registryContext, path strin
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
+	metadataProgress(ctx, "config:"+blob.Digest, "image_config", "ready", int64(len(data)), int64(len(data)), int64(len(data)))
 	return data, nil
 }
 
@@ -2761,14 +2802,31 @@ func ParseImageRef(imageRef string) (registry string, image string, tag string, 
 	if strings.TrimSpace(imageRef) == "" {
 		return "", "", "", fmt.Errorf("image source is required")
 	}
+	if strings.ContainsAny(imageRef, " \t\r\n?#\\") || strings.Contains(imageRef, "://") {
+		return "", "", "", fmt.Errorf("invalid OCI reference")
+	}
 	image = imageRef
 	tag = "latest"
-
-	lastSlash := strings.LastIndex(imageRef, "/")
-	lastColon := strings.LastIndex(imageRef, ":")
-	if lastColon > lastSlash {
-		image = imageRef[:lastColon]
-		tag = imageRef[lastColon+1:]
+	if at := strings.IndexByte(imageRef, '@'); at >= 0 {
+		image, tag = imageRef[:at], imageRef[at+1:]
+		digestBytes, decodeErr := hex.DecodeString(strings.TrimPrefix(tag, "sha256:"))
+		if !strings.HasPrefix(tag, "sha256:") || decodeErr != nil || len(digestBytes) != sha256.Size || tag != strings.ToLower(tag) {
+			return "", "", "", fmt.Errorf("invalid image digest")
+		}
+		// Optional tag@digest syntax is pinned by the digest.
+		if colon := strings.LastIndexByte(image, ':'); colon > strings.LastIndexByte(image, '/') {
+			image = image[:colon]
+		}
+	} else if colon := strings.LastIndexByte(image, ':'); colon > strings.LastIndexByte(image, '/') {
+		image, tag = image[:colon], image[colon+1:]
+	}
+	if image == "" || tag == "" || strings.ContainsAny(tag, "/@") {
+		return "", "", "", fmt.Errorf("invalid OCI reference")
+	}
+	for _, component := range strings.Split(image, "/") {
+		if component == "" || component == "." || component == ".." {
+			return "", "", "", fmt.Errorf("invalid OCI repository")
+		}
 	}
 
 	firstSlash := strings.Index(image, "/")

@@ -76,20 +76,33 @@ type DownloadRequest struct {
 	Source string `json:"source,omitempty"`
 }
 
+// TransferProgress supplements legacy aggregate progress with one transfer's
+// counters. NetworkBytes excludes cache discovery and resumed local bytes.
+type TransferProgress struct {
+	ID           string `json:"id"`
+	Kind         string `json:"kind"`
+	State        string `json:"state"`
+	Completed    int64  `json:"completed"`
+	Total        int64  `json:"total"`
+	NetworkBytes int64  `json:"network_bytes"`
+}
+
 type ProgressEvent struct {
-	Status             string  `json:"status"`
-	Artifact           string  `json:"artifact,omitempty"`
-	Progress           float64 `json:"progress,omitempty"`
-	DownloadProgress   float64 `json:"download_progress,omitempty"`
-	IndexProgress      float64 `json:"index_progress,omitempty"`
-	BytesDownloaded    int64   `json:"bytes_downloaded,omitempty"`
-	BytesTotal         int64   `json:"bytes_total,omitempty"`
-	FilesDownloaded    int64   `json:"files_downloaded,omitempty"`
-	FilesTotal         int64   `json:"files_total,omitempty"`
-	RateBytesPerSecond float64 `json:"rate_bytes_per_second,omitempty"`
-	ETASeconds         float64 `json:"eta_seconds,omitempty"`
-	Blob               string  `json:"blob,omitempty"`
-	Error              string  `json:"error,omitempty"`
+	Transfer           *TransferProgress `json:"transfer,omitempty"`
+	PlanningComplete   bool              `json:"planning_complete,omitempty"`
+	Status             string            `json:"status"`
+	Artifact           string            `json:"artifact,omitempty"`
+	Progress           float64           `json:"progress,omitempty"`
+	DownloadProgress   float64           `json:"download_progress,omitempty"`
+	IndexProgress      float64           `json:"index_progress,omitempty"`
+	BytesDownloaded    int64             `json:"bytes_downloaded,omitempty"`
+	BytesTotal         int64             `json:"bytes_total,omitempty"`
+	FilesDownloaded    int64             `json:"files_downloaded,omitempty"`
+	FilesTotal         int64             `json:"files_total,omitempty"`
+	RateBytesPerSecond float64           `json:"rate_bytes_per_second,omitempty"`
+	ETASeconds         float64           `json:"eta_seconds,omitempty"`
+	Blob               string            `json:"blob,omitempty"`
+	Error              string            `json:"error,omitempty"`
 }
 
 type ImageState struct {

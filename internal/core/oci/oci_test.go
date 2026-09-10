@@ -979,3 +979,105 @@ func containsEnv(env []string, want string) bool {
 	}
 	return false
 }
+
+func TestDigestReferenceRoutesToPinnedManifest(t *testing.T) {
+	body := []byte(`{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{},"layers":[]}`)
+	sum := sha256.Sum256(body)
+	digest := "sha256:" + hex.EncodeToString(sum[:])
+	var requested string
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested = r.URL.Path
+		w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+	store := NewStore(t.TempDir())
+	store.httpClient = server.Client()
+	reference := strings.TrimPrefix(server.URL, "https://") + "/team/image@" + digest
+	plan, err := store.PlanPull(t.Context(), "pinned", reference, PullOptions{Architecture: "arm64"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requested != "/v2/team/image/manifests/"+digest || !strings.HasSuffix(plan.ResolvedSource, "@"+digest) {
+		t.Fatalf("wrong pinned manifest: %s %+v", requested, plan)
+	}
+	wrong := "sha256:" + strings.Repeat("0", 64)
+	if _, err := store.PlanPull(t.Context(), "pinned", strings.TrimPrefix(server.URL, "https://")+"/team/image@"+wrong); err == nil {
+		t.Fatal("accepted content that does not match the pinned digest")
+	}
+	for _, ref := range []string{"example.org/image@sha256:bad", "example.org/../image:tag", "example.org/image@user:password", "example.org/image:"} {
+		if _, _, _, err := ParseImageRef(ref); err == nil {
+			t.Errorf("accepted malformed reference %q", ref)
+		}
+	}
+}
+
+func TestOCIPullReportsTransferredAndCachedArtifacts(t *testing.T) {
+	t.Setenv(sharedCacheEnv, t.TempDir())
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	tw := tar.NewWriter(gz)
+	payload := []byte("image contents")
+	if err := tw.WriteHeader(&tar.Header{Name: "hello", Mode: 0644, Size: int64(len(payload))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	layer := compressed.Bytes()
+	config := []byte(`{"architecture":"arm64","os":"linux","config":{}}`)
+	digest := func(data []byte) string { sum := sha256.Sum256(data); return "sha256:" + hex.EncodeToString(sum[:]) }
+	layerDigest, configDigest := digest(layer), digest(config)
+	manifestData, err := json.Marshal(manifest{SchemaVersion: 2, MediaType: "application/vnd.oci.image.manifest.v1+json", Config: descriptor{Digest: configDigest, Size: int64(len(config))}, Layers: []descriptor{{MediaType: "application/vnd.oci.image.layer.v1.tar+gzip", Digest: layerDigest, Size: int64(len(layer))}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "/manifests/"):
+			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			_, _ = w.Write(manifestData)
+		case strings.HasSuffix(r.URL.Path, layerDigest):
+			_, _ = w.Write(layer)
+		case strings.HasSuffix(r.URL.Path, configDigest):
+			_, _ = w.Write(config)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	store := NewStore(t.TempDir())
+	store.httpClient = server.Client()
+	for pass := 0; pass < 2; pass++ {
+		transfers := map[string]client.TransferProgress{}
+		planned := false
+		_, err := store.Pull(t.Context(), fmt.Sprintf("image%d", pass), strings.TrimPrefix(server.URL, "https://")+"/test/image:latest", PullOptions{Architecture: "arm64", Refresh: true, Report: func(e client.ProgressEvent) {
+			if e.Transfer != nil {
+				transfers[e.Transfer.ID] = *e.Transfer
+			}
+			planned = planned || e.PlanningComplete
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		progress, ok := transfers[layerDigest]
+		if !planned || !ok || progress.Completed != int64(len(layer)) || progress.Total != int64(len(layer)) {
+			t.Fatalf("layer accounting: planned=%v progress=%+v", planned, progress)
+		}
+		if pass == 0 && progress.NetworkBytes != int64(len(layer)) {
+			t.Fatalf("downloaded bytes = %d, want %d", progress.NetworkBytes, len(layer))
+		}
+		if pass == 1 && (progress.NetworkBytes != 0 || progress.State != "cached") {
+			t.Fatalf("cached transfer: %+v", progress)
+		}
+		if _, ok := transfers["config:"+configDigest]; !ok {
+			t.Fatal("missing config artifact")
+		}
+	}
+}

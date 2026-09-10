@@ -34,6 +34,13 @@ For isolated development, pass `-cache-dir` and `-storage` pointing to developme
 directories. Existing product settings, shared folders, persistent homes, bundle
 identifiers, and image names are preserved during this source split.
 
+## Neurodesk headless backend
+
+`NeurodeskAppX --headless` starts an authenticated loopback HTTP API without an
+initial window. See the [integration guide](docs/headless.md) and
+[OpenAPI contract](docs/headless.openapi.json) for image/kernel progress, VM
+parameters, native Glass windows, and graceful shutdown.
+
 ## Checks and releases
 
 Commit CI runs focused product/runtime tests, native Darwin GPU tests, and builds

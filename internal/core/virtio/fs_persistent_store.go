@@ -464,6 +464,9 @@ func preparePersistentImageStoreLayout(dir string) error {
 	return nil
 }
 
+// ErrPersistentStoreInUse identifies a competing writer without matching error text.
+var ErrPersistentStoreInUse = errors.New("persistent image store is in use")
+
 func lockPersistentImageStore(path string) (*os.File, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
@@ -471,6 +474,9 @@ func lockPersistentImageStore(path string) (*os.File, error) {
 	}
 	if err := lockPersistentFile(file); err != nil {
 		_ = file.Close()
+		if persistentLockBusy(err) {
+			return nil, fmt.Errorf("%w: %w", ErrPersistentStoreInUse, err)
+		}
 		return nil, fmt.Errorf("lock persistent image store: %w", err)
 	}
 	return file, nil

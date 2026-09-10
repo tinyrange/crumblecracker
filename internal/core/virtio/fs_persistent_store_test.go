@@ -111,8 +111,8 @@ func TestPersistentImageFSRejectsConcurrentWriter(t *testing.T) {
 	first := openPersistentImageFSTest(t, lower, storeDir)
 	defer first.Close()
 	_, err := NewPersistentImageFS(lower, PersistentImageFSOptions{StoreDir: storeDir, LowerID: "test"})
-	if err == nil {
-		t.Fatal("second writable attachment unexpectedly succeeded")
+	if !errors.Is(err, ErrPersistentStoreInUse) {
+		t.Fatalf("second writer error = %v, want ErrPersistentStoreInUse", err)
 	}
 }
 
