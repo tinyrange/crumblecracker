@@ -126,7 +126,11 @@ func startHeadlessTestVM(t *testing.T, s *headlessServer) string {
 	if pull.State != "succeeded" {
 		t.Fatalf("pull: %+v", pull)
 	}
-	start := waitHeadlessOperation(t, s, testHeadlessRequest(s, "POST", "/v1/vms", `{"image_id":"img_test","env":{"NEURODESKTOP_VERSION":"2026-07-11","VALUE":"quotes \" $HOME\nsecond line"},"shares":[{"host_path":"/tmp/project","guest_path":"/data"}]}`, ""))
+	hostPath, err := json.Marshal(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := waitHeadlessOperation(t, s, testHeadlessRequest(s, "POST", "/v1/vms", fmt.Sprintf(`{"image_id":"img_test","env":{"NEURODESKTOP_VERSION":"2026-07-11","VALUE":"quotes \" $HOME\nsecond line"},"shares":[{"host_path":%s,"guest_path":"/data"}]}`, hostPath), ""))
 	if start.State != "succeeded" {
 		t.Fatalf("start: %+v", start)
 	}
