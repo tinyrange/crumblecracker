@@ -179,3 +179,47 @@ func TestFocusLossReleasesCaptureWithoutAutomaticRecapture(t *testing.T) {
 		t.Fatal("focus gain recaptured mouse without user action")
 	}
 }
+
+func TestGuestDragReleasesOverToolbar(t *testing.T) {
+	v, w, s := captureViewer(t)
+	previous := openSharedFolder
+	t.Cleanup(func() { openSharedFolder = previous })
+	openSharedFolder = func(string) error { t.Fatal("guest drag activated toolbar"); return nil }
+	w.events = []window.InputEvent{
+		{Type: window.InputEventMouseDown, Button: window.ButtonLeft, MouseX: 500, MouseY: 500},
+		{Type: window.InputEventMouseMove, MouseX: 50, MouseY: 10},
+		{Type: window.InputEventMouseUp, Button: window.ButtonLeft, MouseX: 50, MouseY: 10},
+	}
+	if err := v.handleInput(); err != nil {
+		t.Fatal(err)
+	}
+	last := s.pointers[len(s.pointers)-1]
+	if last.buttons != 0 || last.previous != 1 || v.buttons != 0 {
+		t.Fatalf("drag release: %+v", last)
+	}
+}
+func TestCaptureKeepsAutomationButtonStateConsistent(t *testing.T) {
+	v, _, s := captureViewer(t)
+	a := &desktopAutomation{}
+	a.setSession(s)
+	v.automation = a
+	if err := v.sendPointer(500, 500, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.setMouseCaptured(true); err != nil {
+		t.Fatal(err)
+	}
+	if a.pointerButtons != 0 {
+		t.Fatal("capture retained absolute automation button")
+	}
+	if err := v.setMouseCaptured(false); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.sendPointer(500, 500, 1); err != nil {
+		t.Fatal(err)
+	}
+	last := s.pointers[len(s.pointers)-1]
+	if last.previous != 0 || last.buttons != 1 {
+		t.Fatalf("first click after capture: %+v", last)
+	}
+}

@@ -37,7 +37,11 @@ func (v *displayViewer) setMouseCaptured(captured bool) error {
 			err = relative.RelativePointer(0, 0, 0, v.sentButtons)
 		}
 	} else if v.sentButtons != 0 {
-		err = v.session.Pointer(v.lastPointerX, v.lastPointerY, 0, v.sentButtons)
+		if v.automation != nil {
+			err = v.automation.pointer(v.lastPointerX, v.lastPointerY, 0)
+		} else {
+			err = v.session.Pointer(v.lastPointerX, v.lastPointerY, 0, v.sentButtons)
+		}
 	}
 	if captured && err != nil {
 		return err

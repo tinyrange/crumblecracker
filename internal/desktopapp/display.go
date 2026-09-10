@@ -2942,6 +2942,11 @@ func (v *displayViewer) handleInput() error {
 }
 
 func (v *displayViewer) handleChromeInput(event window.InputEvent) bool {
+	// A drag that began in the guest still owns its button release, even if
+	// the host pointer has crossed into the toolbar.
+	if v.buttons != 0 && (event.Type == window.InputEventMouseMove || event.Type == window.InputEventMouseUp || event.Type == window.InputEventMouseDown) {
+		return false
+	}
 	if event.Type == window.InputEventMouseMove {
 		v.chromeControlHover = chromeWindowControlNone
 	}
