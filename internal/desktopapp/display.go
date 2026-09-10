@@ -2879,6 +2879,19 @@ func normalizedDisplayScale(scale float32) float32 {
 
 func (v *displayViewer) handleInput() error {
 	for _, event := range v.window.DrainInputEvents() {
+		if !v.mouseCaptured && v.handleChromeInput(event) {
+			continue
+		}
+		if !v.mouseCaptured && event.Type == window.InputEventMouseMove {
+			v.updateUpdateNotificationHover(event.MouseX, event.MouseY, time.Now())
+		}
+		if !v.mouseCaptured && event.Type == window.InputEventMouseDown &&
+			v.handleUpdateNotificationClick(event.MouseX, event.MouseY, time.Now()) {
+			continue
+		}
+		if v.handleUpdateNotificationKey(event, time.Now()) {
+			continue
+		}
 		if v.relativeDesktop && !v.mouseCaptured {
 			consumed, err := v.handleRelativeDesktopEntry(event)
 			if err != nil {
@@ -2923,19 +2936,6 @@ func (v *displayViewer) handleInput() error {
 			}
 		}
 
-		if !v.mouseCaptured && v.handleChromeInput(event) {
-			continue
-		}
-		if event.Type == window.InputEventMouseMove {
-			v.updateUpdateNotificationHover(event.MouseX, event.MouseY, time.Now())
-		}
-		if event.Type == window.InputEventMouseDown &&
-			v.handleUpdateNotificationClick(event.MouseX, event.MouseY, time.Now()) {
-			continue
-		}
-		if v.handleUpdateNotificationKey(event, time.Now()) {
-			continue
-		}
 		switch event.Type {
 		case window.InputEventKeyDown, window.InputEventKeyUp, window.InputEventFlagsChanged:
 			code, ok := linuxKeycode(event.Key)

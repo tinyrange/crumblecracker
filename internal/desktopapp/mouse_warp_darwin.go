@@ -27,6 +27,14 @@ func warpRelativeHostCursor(w window.Window, x, y float32) {
 		host.WarpCursor(x, y)
 		return
 	}
+	app := objc.ID(objc.GetClass("NSApplication")).Send(objc.RegisterName("sharedApplication"))
+	win := app.Send(objc.RegisterName("keyWindow"))
+	if win != 0 {
+		warpRelativeWindowCursor(win, float64(normalizedDisplayScale(w.Scale())), x, y)
+	}
+}
+
+func warpRelativeWindowCursor(win objc.ID, scale float64, x, y float32) {
 	cursorWarpOnce.Do(func() {
 		library, err := purego.Dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", purego.RTLD_NOW|purego.RTLD_GLOBAL)
 		if err == nil {
@@ -36,14 +44,8 @@ func warpRelativeHostCursor(w window.Window, x, y float32) {
 	if cursorWarp == nil {
 		return
 	}
-	app := objc.ID(objc.GetClass("NSApplication")).Send(objc.RegisterName("sharedApplication"))
-	win := app.Send(objc.RegisterName("keyWindow"))
-	if win == 0 {
-		return
-	}
 	view := win.Send(objc.RegisterName("contentView"))
 	bounds := objc.Send[cursorRect](view, objc.RegisterName("bounds"))
-	scale := float64(normalizedDisplayScale(w.Scale()))
 	p := cursorPoint{float64(x) / scale, bounds.Size.Height - float64(y)/scale}
 	p = objc.Send[cursorPoint](view, objc.RegisterName("convertPoint:toView:"), p, objc.ID(0))
 	p = objc.Send[cursorPoint](win, objc.RegisterName("convertPointToScreen:"), p)
