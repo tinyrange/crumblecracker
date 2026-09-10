@@ -782,6 +782,7 @@ func (g *GPU) dispatchLocked(request []byte, queueIndex int) []byte {
 			return gpuResponse(request, gpuRespErrInvalidScanoutID, nil)
 		}
 		if command == gpuCmdMoveCursor {
+			g.cursor.Move(int(int32(binary.LittleEndian.Uint32(request[28:32]))), int(int32(binary.LittleEndian.Uint32(request[32:36]))))
 			return gpuResponse(request, gpuRespOKNoData, nil)
 		}
 		id := binary.LittleEndian.Uint32(request[40:44])
@@ -799,6 +800,7 @@ func (g *GPU) dispatchLocked(request []byte, queueIndex int) []byte {
 		if hotX >= resource.width || hotY >= resource.height {
 			return gpuResponse(request, gpuRespErrInvalidParameter, nil)
 		}
+		g.cursor.Move(int(int32(binary.LittleEndian.Uint32(request[28:32]))), int(int32(binary.LittleEndian.Uint32(request[32:36]))))
 		g.cursorResource = id
 		g.cursor.Update(int(resource.width), int(resource.height), int(hotX), int(hotY), resource.pixels)
 		return gpuResponse(request, gpuRespOKNoData, nil)

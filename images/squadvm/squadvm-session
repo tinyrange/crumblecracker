@@ -17,11 +17,15 @@ chown "$uid:$gid" "$home"
 chown -R "$uid:$gid" "$home/.cache" "$home/.config" "$home/Desktop"
 
 ready_file="/run/user/$uid/squadvm-desktop-ready"
-rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 "$ready_file" "/run/user/$uid/squadvm-relative-pointer-ready"
+rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 "$ready_file" "/run/user/$uid/squadvm-relative-desktop-ready" "/run/user/$uid/squadvm-relative-pointer-ready"
 
 setsid /usr/bin/dbus-daemon --system --nofork --nopidfile </dev/null &
 dbus_pid=$!
-setsid /usr/lib/xorg/Xorg :0 \
+xorg_config=/etc/X11/xorg.conf
+if [ -f /run/ccx3-relative-pointer ]; then
+    xorg_config=/etc/X11/xorg-relative.conf
+fi
+setsid /usr/lib/xorg/Xorg :0 -config "$xorg_config" \
     -noreset \
     -nolisten tcp \
     -novtswitch \
@@ -124,10 +128,12 @@ setsid setpriv --reuid="$uid" --regid="$gid" --init-groups env \
         # session bus now that it is ready so the wallpaper fills the screen.
         xfdesktop --reload
 
-        # Advertise capture only when Xorg has actually opened the relative device.
-        # Older runtimes can still boot this image without mouse capture.
+        # Advertise the single relative-pointer desktop protocol only after Xorg opens it.
         if xinput list --id-only GlassRelativePointer >/dev/null 2>&1; then
             touch "$XDG_RUNTIME_DIR/squadvm-relative-pointer-ready"
+            if [ -f /run/ccx3-relative-pointer ]; then
+                touch "$XDG_RUNTIME_DIR/squadvm-relative-desktop-ready"
+            fi
         fi
         touch "$XDG_RUNTIME_DIR/squadvm-desktop-ready"
         wait "$session_pid"

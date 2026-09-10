@@ -58,13 +58,18 @@ The native top bar includes **Open shared folder**, which opens the currently
 configured host share in Finder, Explorer, or the host file manager. The same
 control is available in NeurodeskAppX, including windows opened by its headless API.
 
-On macOS, **Capture mouse** enables relative mouse movement for games such as
-Cube 2. Press **Control+Option** (Ctrl+Alt) to release it. Capture also releases
-when the app loses focus or closes; mouse buttons and held keys are released in
-the guest. Ordinary desktop input continues to use the absolute pointer.
-Capture requires an updated image with the `GlassRelativePointer` Xorg device;
-the control appears only after that device is ready. GPU acceleration is not
-required for mouse capture.
+On macOS, the native app uses a single relative mouse in supported images. Move
+into the guest display to control its virtual cursor; crossing an edge releases
+the pointer back to the host at that edge. **Lock mouse** keeps movement captured
+for games such as Cube 2. **Ctrl + Option** releases it explicitly. Focus loss and
+window close also release capture, guest mouse buttons, and held keys.
+
+This mode needs an updated app and image. The app requests
+`CCX3_RELATIVE_POINTER=1`; guest init publishes `/run/ccx3-relative-pointer`, and
+SquadVM starts Xorg with `xorg-relative.conf`. The image advertises
+`/run/user/1000/squadvm-relative-desktop-ready` after the device is ready. Other
+hosts, VNC, and older apps retain the default input configuration. No SDL changes
+are required.
 
 For an opt-in release check, copy `check-gpu.sh` into the shared directory and
 run `sh /shared/check-gpu.sh` from a guest desktop terminal, without sudo.

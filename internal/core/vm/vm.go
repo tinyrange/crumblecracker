@@ -459,6 +459,7 @@ func (s desktopSession) Cursor() display.CursorUpdate {
 	}
 	update := s.desktop.GPU.Cursor().Snapshot()
 	return display.CursorUpdate{
+		X: update.X, Y: update.Y, PositionGeneration: update.PositionGeneration,
 		Width: update.Width, Height: update.Height, HotX: update.HotX, HotY: update.HotY,
 		Visible: update.Visible, Generation: update.Generation, Pixels: update.Pixels,
 	}
@@ -479,14 +480,18 @@ func (s desktopSession) Pointer(x, y uint32, buttons, previousButtons uint8) err
 	if s.desktop.Pointer == nil {
 		return nil
 	}
-	return s.desktop.Pointer.PointerEvent(x, y, buttons, previousButtons)
+	return s.desktop.SendPointer(x, y, buttons, previousButtons)
+}
+
+func (s desktopSession) SetRelativePointerMode(enabled bool) {
+	s.desktop.SetRelativePointerMode(enabled)
 }
 
 func (s desktopSession) RelativePointer(dx, dy int32, buttons, previousButtons uint8) error {
 	if s.desktop.RelativePointer == nil {
 		return fmt.Errorf("relative pointer unavailable")
 	}
-	return s.desktop.RelativePointer.RelativePointerEvent(dx, dy, buttons, previousButtons)
+	return s.desktop.SendRelativePointer(dx, dy, buttons, previousButtons)
 }
 
 func (s desktopSession) RelativeScroll(dx, dy int32) error {
@@ -500,7 +505,7 @@ func (s desktopSession) Scroll(deltaX120, deltaY120 int32) error {
 	if s.desktop.Pointer == nil {
 		return nil
 	}
-	return s.desktop.Pointer.ScrollEvent(deltaX120, deltaY120)
+	return s.desktop.SendScroll(deltaX120, deltaY120)
 }
 
 func (s desktopSession) SetClipboard(text string) {

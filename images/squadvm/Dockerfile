@@ -127,6 +127,7 @@ COPY squadvm-sshd.service /etc/systemd/system/squadvm-sshd.service
 COPY squadvm-sshd_config /etc/ssh/squadvm-sshd_config
 COPY squadvm.target /etc/systemd/system/squadvm.target
 COPY xorg.conf /etc/X11/xorg.conf
+COPY xorg-relative.conf /etc/X11/xorg-relative.conf
 COPY squadvm-wallpaper.svg squadvm-icon.svg /usr/share/squadvm/
 COPY cyber-squad-special.png /usr/share/squadvm/
 COPY skel/ /usr/share/squadvm/skel/

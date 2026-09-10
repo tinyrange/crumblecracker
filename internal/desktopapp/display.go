@@ -10,6 +10,7 @@ import (
 	"image/png"
 	"math"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -194,7 +195,20 @@ type displayViewer struct {
 	updateConsumedKeys  map[window.Key]bool
 	chromeEnabled       bool
 	cvmfsAvailable      bool
-	mouseCaptured       bool
+
+	mouseCaptured            bool
+	relativeDesktop          bool
+	mouseLocked              bool
+	mouseReentryBlocked      bool
+	mouseCaptureFocused      bool
+	mouseEdgeReleasedAt      time.Time
+	virtualX, virtualY       float64
+	cursorPositionGeneration uint64
+	lastRelativeMotion       time.Time
+	cursorTexture            uint32
+	cursorTextureGeneration  uint64
+	presentedCursor          relativeCursorPresentation
+
 	mouseCaptureReady   bool
 	mouseRemainderX     float64
 	mouseRemainderY     float64
@@ -574,6 +588,9 @@ func (v *displayViewer) init() error {
 }
 
 func (v *displayViewer) close() {
+	if v.cursorTexture != 0 {
+		v.gl.DeleteTextures(1, &v.cursorTexture)
+	}
 	_ = v.setMouseCaptured(false)
 	if v.automation != nil {
 		v.automation.setSession(nil)
@@ -665,6 +682,10 @@ func (v *displayViewer) loop(ctx context.Context) error {
 				} else {
 					v.session = result.started.Session
 					v.mouseCaptureReady = result.started.MouseCaptureReady
+					v.relativeDesktop = result.started.RelativeDesktopReady
+					if mode, ok := v.session.(interface{ SetRelativePointerMode(bool) }); ok {
+						mode.SetRelativePointerMode(v.relativeDesktop)
+					}
 					if v.automation != nil {
 						v.automation.setSession(v.session)
 					}
@@ -750,7 +771,7 @@ func (v *displayViewer) loop(ctx context.Context) error {
 			return err
 		}
 		if v.desktopVisible && v.nativeFrame.Texture != 0 &&
-			v.presentedGeneration == v.nativeGeneration {
+			v.presentedGeneration == v.nativeGeneration && (!v.relativeDesktop || v.presentedCursor == v.relativeCursorPresentation()) {
 			// A native guest frame is already resident in the window's front
 			// buffer. Re-presenting it forces AppKit to synchronize a second
 			// shared OpenGL context without producing a new visible result.
@@ -789,6 +810,7 @@ func (v *displayViewer) loop(ctx context.Context) error {
 			// real alpha (notably the font atlas). Restore blending as soon as the
 			// opaque framebuffer has been drawn.
 			v.gl.Enable(gl.Blend)
+			v.drawRelativeDesktopCursor(backingWidth, backingHeight)
 			v.drawUpdateNotifications(backingWidth, backingHeight, time.Now())
 		} else if v.showSettings {
 			v.drawSettings(backingWidth, backingHeight)
@@ -808,6 +830,7 @@ func (v *displayViewer) loop(ctx context.Context) error {
 			v.automation.submitPresentationFrame(capture, backingWidth, backingHeight, generation, pixels)
 		}
 		v.window.Swap()
+		v.presentedCursor = v.relativeCursorPresentation()
 		if v.desktopVisible && v.onPresentation != nil {
 			scale := normalizedDisplayScale(v.window.Scale())
 			v.onPresentation(int(float32(backingWidth)/scale), int(float32(backingHeight)/scale))
@@ -2388,8 +2411,14 @@ func (v *displayViewer) drawAppChrome(backingWidth, backingHeight int) {
 	titleRight := folderBounds.Min.X - 8
 	if !captureBounds.Empty() {
 		captureLabel := "Capture mouse"
+		if v.relativeDesktop {
+			captureLabel = "Lock mouse"
+		}
 		if v.mouseCaptured {
 			captureLabel = "Release: Ctrl + Alt"
+			if runtime.GOOS == "darwin" {
+				captureLabel = "Ctrl+Option: release"
+			}
 			if captureBounds.Dx() < 140 {
 				captureLabel = "Release mouse"
 			}
@@ -2850,10 +2879,25 @@ func normalizedDisplayScale(scale float32) float32 {
 
 func (v *displayViewer) handleInput() error {
 	for _, event := range v.window.DrainInputEvents() {
+		if v.relativeDesktop && !v.mouseCaptured {
+			consumed, err := v.handleRelativeDesktopEntry(event)
+			if err != nil {
+				return err
+			}
+			if consumed {
+				continue
+			}
+		}
 		if v.mouseCaptured {
 			if event.Mods&(window.ModCtrl|window.ModAlt) == window.ModCtrl|window.ModAlt &&
 				(event.Type == window.InputEventKeyDown || event.Type == window.InputEventFlagsChanged) {
-				if err := v.setMouseCaptured(false); err != nil {
+				var err error
+				if v.relativeDesktop {
+					err = v.releaseRelativeCursor()
+				} else {
+					err = v.setMouseCaptured(false)
+				}
+				if err != nil {
 					return err
 				}
 				continue
@@ -2993,6 +3037,7 @@ func (v *displayViewer) handleChromeInput(event window.InputEvent) bool {
 				}
 			} else if point.In(capture) {
 				v.toolbarError = ""
+				v.mouseLocked = true
 				if err := v.setMouseCaptured(true); err != nil {
 					v.toolbarError = err.Error()
 				}
@@ -3054,7 +3099,7 @@ func keyboardTransitions(event window.InputEvent, wasDown, platformDown bool) []
 }
 
 func (v *displayViewer) sendScroll(deltaX120, deltaY120 int32) error {
-	if v.mouseCaptured {
+	if v.mouseCaptured || v.relativeDesktop {
 		return v.session.(display.RelativePointerSession).RelativeScroll(deltaX120, deltaY120)
 	}
 	if scroller, ok := v.session.(display.HighResolutionScroller); ok {
@@ -3143,6 +3188,9 @@ func modifierTransitionDown(key window.Key, mods window.KeyMods, wasDown bool) (
 }
 
 func (v *displayViewer) sendPointer(x, y float32, buttons uint8) error {
+	if v.relativeDesktop {
+		return nil
+	}
 	backingWidth, backingHeight := v.window.BackingSize()
 	guestWidth, guestHeight := v.session.Size()
 	if backingWidth <= 0 || backingHeight <= 0 || guestWidth <= 0 || guestHeight <= 0 {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"math"
+	"time"
 
 	"github.com/tinyrange/crumblecracker/internal/display"
 	"github.com/tinyrange/gowin/window"
@@ -30,6 +31,9 @@ func (v *displayViewer) setMouseCaptured(captured bool) error {
 	// Release the host first, even if the guest has already disconnected.
 	if !captured {
 		host.SetCursorCaptured(false)
+		v.mouseLocked = false
+		v.mouseReentryBlocked = true
+		v.mouseEdgeReleasedAt = time.Time{}
 	}
 	var err error
 	if v.mouseCaptured {
@@ -76,12 +80,33 @@ func (v *displayViewer) sendRelativePointer(dx, dy float32) error {
 	}
 	// Native movement counts are not framebuffer pixels: never multiply by DPI
 	// or scale them through the guest desktop's absolute-coordinate range.
+	if v.relativeDesktop {
+		v.reconcileRelativeCursor()
+	}
 	x := consumeMouseDelta(dx, &v.mouseRemainderX)
 	y := consumeMouseDelta(dy, &v.mouseRemainderY)
 	if err := relative.RelativePointer(x, y, v.buttons, v.sentButtons); err != nil {
 		return err
 	}
 	v.sentButtons = v.buttons
+	if v.relativeDesktop {
+		v.virtualX += float64(x)
+		v.virtualY += float64(y)
+		if x != 0 || y != 0 {
+			v.lastRelativeMotion = time.Now()
+		}
+		width, height := v.session.Size()
+		if !v.mouseLocked && (v.virtualX < 0 || v.virtualY < 0 || v.virtualX >= float64(width) || v.virtualY >= float64(height)) {
+			// Limit the overshoot to a small host-side handoff, even for fast motion.
+			v.virtualX = max(-2, min(float64(width)+1, v.virtualX))
+			v.virtualY = max(-2, min(float64(height)+1, v.virtualY))
+			err := v.releaseRelativeCursor()
+			v.mouseEdgeReleasedAt = time.Now()
+			return err
+		}
+		v.virtualX = max(0, min(float64(width-1), v.virtualX))
+		v.virtualY = max(0, min(float64(height-1), v.virtualY))
+	}
 	return nil
 }
 
@@ -102,6 +127,10 @@ func toolbarActionBounds(width float32, insets window.TitleBarInsets, capture, c
 }
 
 func (v *displayViewer) syncMouseCapture(focused bool) error {
+	v.mouseCaptureFocused = focused
+	if v.relativeDesktop {
+		v.reconcileRelativeCursor()
+	}
 	if v.mouseCaptured && (!focused || !v.desktopVisible) {
 		return v.setMouseCaptured(false)
 	}

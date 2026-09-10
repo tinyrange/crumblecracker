@@ -892,6 +892,9 @@ func bootSystemd(cfg config, bootStart time.Time) error {
 	if err := installSystemdStage2(cfg); err != nil {
 		return err
 	}
+	if err := installRelativePointerMode("/", cfg.Env); err != nil {
+		return err
+	}
 	writeStage(bootStart, "exec systemd")
 	args := []string{systemdPath}
 	if headlessGuest(cfg.Env) {

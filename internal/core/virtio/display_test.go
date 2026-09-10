@@ -185,6 +185,8 @@ func TestGPUCursorQueueDoesNotRequireResponseBuffer(t *testing.T) {
 	q.availAddr = 0x3000
 	q.usedAddr = 0x3800
 	request := gpuTestRequest(gpuCmdMoveCursor, 56)
+	binary.LittleEndian.PutUint32(request[28:32], 321)
+	binary.LittleEndian.PutUint32(request[32:36], 123)
 	copy(mem[0x4000:], request)
 	writeDesc(mem, q.descAddr, 0x4000, uint32(len(request)), 0, 0)
 	binary.LittleEndian.PutUint16(mem[q.availAddr+2:], 1)
@@ -194,6 +196,10 @@ func TestGPUCursorQueueDoesNotRequireResponseBuffer(t *testing.T) {
 	}
 	if got := binary.LittleEndian.Uint16(mem[q.usedAddr+2:]); got != 1 {
 		t.Fatalf("used index = %d, want 1", got)
+	}
+	cursor := gpu.Cursor().Snapshot()
+	if cursor.X != 321 || cursor.Y != 123 || cursor.PositionGeneration == 0 || cursor.Generation != 0 {
+		t.Fatalf("cursor movement: %+v", cursor)
 	}
 	if got := binary.LittleEndian.Uint32(mem[q.usedAddr+8:]); got != 0 {
 		t.Fatalf("used length = %d, want 0", got)
