@@ -99,7 +99,7 @@ func TestRelativeDesktopGameLockIgnoresEdges(t *testing.T) {
 	if err := v.handleInput(); err != nil {
 		t.Fatal(err)
 	}
-	if w.captured || v.mouseLocked || len(w.warped) != 1 {
+	if w.captured || !v.mouseLocked || len(w.warped) != 1 {
 		t.Fatal("manual release failed")
 	}
 }
@@ -131,5 +131,87 @@ func TestRelativeDesktopDoesNotCaptureUnfocusedWindow(t *testing.T) {
 	}
 	if w.captured || len(s.relative) != 0 || len(s.pointers) != 0 {
 		t.Fatal("unfocused window consumed guest pointer input")
+	}
+}
+
+func TestForceLockSurvivesReleaseAndRecapture(t *testing.T) {
+	for _, release := range []string{"shortcut", "focus loss"} {
+		t.Run(release, func(t *testing.T) {
+			v, w, s := relativeViewer(t)
+			v.reconcileRelativeCursor()
+			if err := v.setMouseForceLocked(true); err != nil {
+				t.Fatal(err)
+			}
+			if release == "focus loss" {
+				if err := v.syncMouseCapture(false); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				w.events = []window.InputEvent{{Type: window.InputEventFlagsChanged, Mods: window.ModCtrl | window.ModAlt}}
+				if err := v.handleInput(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if w.captured || !v.mouseLocked {
+				t.Fatal("temporary release lost force-lock mode")
+			}
+			if err := v.syncMouseCapture(true); err != nil {
+				t.Fatal(err)
+			}
+			if w.captured {
+				t.Fatal("focus gain captured without user input")
+			}
+			s.relative = nil
+			// Re-entry at a distant host coordinate must not move the game camera.
+			w.events = []window.InputEvent{{Type: window.InputEventMouseDown, Button: window.ButtonLeft, MouseX: 1500, MouseY: 1200}}
+			if err := v.handleInput(); err != nil {
+				t.Fatal(err)
+			}
+			if !w.captured || !v.mouseLocked || len(s.relative) != 1 || s.relative[0].x != 0 || s.relative[0].y != 0 || s.relative[0].buttons != 1 {
+				t.Fatalf("recapture=%v mode=%v input=%v", w.captured, v.mouseLocked, s.relative)
+			}
+			// Fast movement repeatedly crosses every edge without releasing capture.
+			for _, delta := range []image.Point{image.Pt(100000, 100000), image.Pt(-200000, -200000), image.Pt(200000, -200000)} {
+				if err := v.sendRelativePointer(float32(delta.X), float32(delta.Y)); err != nil {
+					t.Fatal(err)
+				}
+				if !w.captured {
+					t.Fatal("force lock escaped at an edge")
+				}
+				last := s.relative[len(s.relative)-1]
+				if last.x != int32(delta.X) || last.y != int32(delta.Y) {
+					t.Fatalf("motion changed: %+v", last)
+				}
+			}
+		})
+	}
+}
+
+func TestForceLockToolbarCanRestoreAutomaticEdges(t *testing.T) {
+	v, w, _ := relativeViewer(t)
+	width, _ := w.BackingSize()
+	_, button := toolbarActionBounds(float32(width)/w.Scale(), v.chromeInsets, true, false)
+	click := window.InputEvent{Type: window.InputEventMouseDown, Button: window.ButtonLeft, MouseX: float32(button.Min.X+2) * w.Scale(), MouseY: float32(button.Min.Y+2) * w.Scale()}
+	if !v.handleChromeInput(click) || !v.mouseLocked || !w.captured {
+		t.Fatal("toolbar did not force lock")
+	}
+	if err := v.releaseRelativeCursor(); err != nil {
+		t.Fatal(err)
+	}
+	if !v.handleChromeInput(click) || v.mouseLocked || w.captured {
+		t.Fatal("toolbar did not turn force lock off")
+	}
+	w.events = []window.InputEvent{{Type: window.InputEventMouseMove, MouseX: 500, MouseY: 500}}
+	if err := v.handleInput(); err != nil {
+		t.Fatal(err)
+	}
+	if !w.captured {
+		t.Fatal("desktop entry did not resume")
+	}
+	if err := v.sendRelativePointer(-100000, 0); err != nil {
+		t.Fatal(err)
+	}
+	if w.captured {
+		t.Fatal("automatic edge release was not restored")
 	}
 }

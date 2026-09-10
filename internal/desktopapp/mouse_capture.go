@@ -31,7 +31,6 @@ func (v *displayViewer) setMouseCaptured(captured bool) error {
 	// Release the host first, even if the guest has already disconnected.
 	if !captured {
 		host.SetCursorCaptured(false)
-		v.mouseLocked = false
 		v.mouseReentryBlocked = true
 		v.mouseEdgeReleasedAt = time.Time{}
 	}
@@ -65,6 +64,23 @@ func (v *displayViewer) setMouseCaptured(captured bool) error {
 		}
 	}
 	return err
+}
+
+// Force lock is a session mode, independent of temporary host capture. Focus
+// loss and the release chord free the host without changing the selected mode.
+func (v *displayViewer) setMouseForceLocked(locked bool) error {
+	previous := v.mouseLocked
+	v.mouseLocked = locked
+	if !locked {
+		v.mouseReentryBlocked = false
+	}
+	if locked {
+		if err := v.setMouseCaptured(true); err != nil {
+			v.mouseLocked = previous
+			return err
+		}
+	}
+	return nil
 }
 
 func consumeMouseDelta(delta float32, remainder *float64) int32 {

@@ -2412,15 +2412,24 @@ func (v *displayViewer) drawAppChrome(backingWidth, backingHeight int) {
 	if !captureBounds.Empty() {
 		captureLabel := "Capture mouse"
 		if v.relativeDesktop {
-			captureLabel = "Lock mouse"
+			captureLabel = "Force lock: off"
+			if v.mouseLocked {
+				captureLabel = "Force lock: on"
+			}
 		}
 		if v.mouseCaptured {
 			captureLabel = "Release: Ctrl + Alt"
 			if runtime.GOOS == "darwin" {
 				captureLabel = "Ctrl+Option: release"
+				if v.relativeDesktop && v.mouseLocked {
+					captureLabel = "Locked: Ctrl+Option"
+				}
 			}
 			if captureBounds.Dx() < 140 {
 				captureLabel = "Release mouse"
+				if v.relativeDesktop && v.mouseLocked {
+					captureLabel = "Force locked"
+				}
 			}
 		}
 		v.drawCenteredTextBold(captureLabel, captureBounds, 12, uiText)
@@ -3037,8 +3046,13 @@ func (v *displayViewer) handleChromeInput(event window.InputEvent) bool {
 				}
 			} else if point.In(capture) {
 				v.toolbarError = ""
-				v.mouseLocked = true
-				if err := v.setMouseCaptured(true); err != nil {
+				var err error
+				if v.relativeDesktop {
+					err = v.setMouseForceLocked(!v.mouseLocked)
+				} else {
+					err = v.setMouseCaptured(true)
+				}
+				if err != nil {
 					v.toolbarError = err.Error()
 				}
 			} else if v.cvmfsAvailable && point.In(statusBounds) {

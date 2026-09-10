@@ -60,9 +60,13 @@ control is available in NeurodeskAppX, including windows opened by its headless 
 
 On macOS, the native app uses a single relative mouse in supported images. Move
 into the guest display to control its virtual cursor; crossing an edge releases
-the pointer back to the host at that edge. **Lock mouse** keeps movement captured
+the pointer back to the host at that edge. **Force lock: off/on** selects whether movement stays captured
 for games such as Cube 2. **Ctrl + Option** releases it explicitly. Focus loss and
-window close also release capture, guest mouse buttons, and held keys.
+window close also release capture, guest mouse buttons, and held keys. Force lock
+stays selected after a temporary release or focus change for the rest of the
+window session. Re-entering the guest uses that mode without moving the game
+camera to match the host cursor. To return to automatic edge release, press
+**Ctrl + Option**, then click **Force lock: on** to turn it off.
 
 This mode needs an updated app and image. The app requests
 `CCX3_RELATIVE_POINTER=1`; guest init publishes `/run/ccx3-relative-pointer`, and

@@ -11,6 +11,7 @@ import (
 
 type relativeCursorPresentation struct {
 	captured     bool
+	locked       bool
 	x, y         float64
 	shape        uint64
 	hostX, hostY float32
@@ -20,7 +21,7 @@ func (v *displayViewer) relativeCursorPresentation() relativeCursorPresentation 
 	if !v.relativeDesktop {
 		return relativeCursorPresentation{}
 	}
-	state := relativeCursorPresentation{captured: v.mouseCaptured}
+	state := relativeCursorPresentation{captured: v.mouseCaptured, locked: v.mouseLocked}
 	if v.mouseCaptured {
 		state.x, state.y = v.virtualX, v.virtualY
 		if provider, ok := v.session.(display.CursorProvider); ok {
@@ -91,7 +92,11 @@ func (v *displayViewer) handleRelativeDesktopEntry(event window.InputEvent) (boo
 	if err := v.setMouseCaptured(true); err != nil {
 		return true, err
 	}
-	v.mouseLocked = false
+	// A game owns its own cursor/camera. Recapture in force-lock mode must not
+	// synthesize movement to align the host pointer with the desktop position.
+	if v.mouseLocked {
+		return event.Type == window.InputEventMouseMove, nil
+	}
 	dx, dy := int32(targetX-v.virtualX), int32(targetY-v.virtualY)
 	if err := v.session.(display.RelativePointerSession).RelativePointer(dx, dy, 0, 0); err != nil {
 		return true, err
