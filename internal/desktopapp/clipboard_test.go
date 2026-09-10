@@ -105,3 +105,24 @@ func TestClipboardFailuresRetryWithoutLosingGuestUpdate(t *testing.T) {
 		t.Fatal("host update was not delivered")
 	}
 }
+
+func TestClipboardAttachSeedsExistingSessionWithoutStaleEcho(t *testing.T) {
+	session := &clipboardTestSession{text: "old guest text", generation: 4}
+	viewer := &displayViewer{session: session, hostClipboard: "host text", hostClipboardKnown: true}
+	viewer.attachHostClipboard()
+	host := &clipboardTestHost{text: "host text"}
+	if err := viewer.syncClipboard(host); err != nil {
+		t.Fatal(err)
+	}
+	if len(session.sent) != 1 || session.sent[0] != "host text" || host.text != "host text" {
+		t.Fatal("attachment lost host clipboard or echoed stale guest text")
+	}
+	session.text = "new guest text"
+	session.generation++
+	if err := viewer.syncClipboard(host); err != nil {
+		t.Fatal(err)
+	}
+	if host.text != "new guest text" {
+		t.Fatal("attachment suppressed subsequent guest update")
+	}
+}

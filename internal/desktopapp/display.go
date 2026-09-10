@@ -607,6 +607,7 @@ func (v *displayViewer) loop(ctx context.Context) error {
 		v.hostClipboard = text
 		v.hostClipboardKnown = true
 	}
+	v.attachHostClipboard()
 	nextClipboardCheck := time.Now()
 	for v.window.Poll() {
 		v.drainStartupSerial()
@@ -653,9 +654,7 @@ func (v *displayViewer) loop(ctx context.Context) error {
 					}
 					v.lastResize = image.Pt(v.settings.DisplayWidth, v.settings.DisplayHeight)
 					v.attemptStopped = result.started.Stopped
-					if v.hostClipboardKnown {
-						v.session.SetClipboard(v.hostClipboard)
-					}
+					v.attachHostClipboard()
 					v.presentation.markGuestReady()
 					v.setStartupProgress(desktopStartupProgress("Waiting for a complete desktop frame"))
 				}
@@ -3060,6 +3059,16 @@ func (v *displayViewer) sendPointer(x, y float32, buttons uint8) error {
 	}
 	v.sentButtons = buttons
 	return nil
+}
+
+// Seed already-running sessions too (headless Glass and window reopen). Ignore
+// the guest generation observed before attaching so stale text cannot echo back
+// over the host clipboard on the first poll.
+func (v *displayViewer) attachHostClipboard() {
+	if v.session != nil && v.hostClipboardKnown {
+		_, v.guestClipboardGen = v.session.GuestClipboard()
+		v.session.SetClipboard(v.hostClipboard)
+	}
 }
 
 func (v *displayViewer) syncClipboard(clipboard hostClipboard) error {
