@@ -893,7 +893,14 @@ func bootSystemd(cfg config, bootStart time.Time) error {
 		return err
 	}
 	writeStage(bootStart, "exec systemd")
-	return syscall.Exec(systemdPath, []string{systemdPath}, os.Environ())
+	args := []string{systemdPath}
+	if headlessGuest(cfg.Env) {
+		if err := installHeadlessSystemd("/", cfg.Env); err != nil {
+			return err
+		}
+		args = append(args, "--unit=ccx3-headless.target")
+	}
+	return syscall.Exec(systemdPath, args, os.Environ())
 }
 
 func findSystemd() (string, error) {

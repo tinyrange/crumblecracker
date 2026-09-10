@@ -380,9 +380,20 @@ func (m *Manager) ensureDownloaded(ctx context.Context, report progressReporter)
 	var downloadErr error
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		entry, developmentEntry, err = m.fetchIndexEntries(ctx)
+		entry, developmentEntry, err = m.fetchIndexEntries(ctx, report)
 		if err != nil {
 			return err
+		}
+		if report != nil {
+			for _, planned := range []indexEntry{entry, developmentEntry} {
+				artifact := fmt.Sprintf("%s-%s.apk", planned.Name, planned.Version)
+				kind := "kernel"
+				if planned.Name != m.packageName {
+					kind = "dependency"
+				}
+				report(client.ProgressEvent{Artifact: artifact, Transfer: &client.TransferProgress{ID: artifact, Kind: kind, State: "queued", Total: planned.Size}})
+			}
+			report(client.ProgressEvent{PlanningComplete: true})
 		}
 		filename := fmt.Sprintf("%s-%s.apk", entry.Name, entry.Version)
 		apkPath = filepath.Join(destDir, filename)
@@ -686,7 +697,7 @@ func cloneModuleDeps(src map[string][]string) map[string][]string {
 	return out
 }
 
-func (m *Manager) fetchIndexEntries(ctx context.Context) (indexEntry, indexEntry, error) {
+func (m *Manager) fetchIndexEntries(ctx context.Context, reporters ...progressReporter) (indexEntry, indexEntry, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, m.indexURL(), nil)
 	if err != nil {
 		return indexEntry{}, indexEntry{}, err
@@ -705,7 +716,15 @@ func (m *Manager) fetchIndexEntries(ctx context.Context) (indexEntry, indexEntry
 		return indexEntry{}, indexEntry{}, fmt.Errorf("download kernel index: status %s", resp.Status)
 	}
 
-	indexData, err := readAPKIndex(resp.Body)
+	var body io.Reader = resp.Body
+	if len(reporters) > 0 && reporters[0] != nil {
+		var buffer bytes.Buffer
+		if err := copyWithProgress(&buffer, resp.Body, resp.ContentLength, "APKINDEX.tar.gz", reporters[0]); err != nil {
+			return indexEntry{}, indexEntry{}, err
+		}
+		body = &buffer
+	}
+	indexData, err := readAPKIndex(body)
 	if err != nil {
 		return indexEntry{}, indexEntry{}, err
 	}

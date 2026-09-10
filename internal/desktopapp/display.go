@@ -100,6 +100,7 @@ void main() {
 )
 
 type displayViewer struct {
+	onPresentation      func(int, int)
 	session             display.Session
 	automation          *desktopAutomation
 	automationAutostart bool
@@ -780,6 +781,10 @@ func (v *displayViewer) loop(ctx context.Context) error {
 			v.automation.submitPresentationFrame(capture, backingWidth, backingHeight, generation, pixels)
 		}
 		v.window.Swap()
+		if v.desktopVisible && v.onPresentation != nil {
+			scale := normalizedDisplayScale(v.window.Scale())
+			v.onPresentation(int(float32(backingWidth)/scale), int(float32(backingHeight)/scale))
+		}
 		if v.desktopVisible && v.nativeFrame.Texture != 0 {
 			v.presentedGeneration = v.nativeGeneration
 		}

@@ -140,7 +140,7 @@ func (b *runtimeBackend) StartStream(ctx context.Context, req client.CreateInsta
 	if qemuX8664 != "" {
 		initCfg.EmulatorTag = vmruntime.EmulatorTag
 	}
-	initCfg.Env = vmruntime.WithDefaultEnv(image.Config.Env)
+	initCfg.Env = vmruntime.WithDefaultEnv(vmruntime.MergeEnv(image.Config.Env, req.Env))
 	initCfg.WorkDir = workDir
 	if strings.TrimSpace(req.SnapshotDir) != "" {
 		initCfg.SnapshotMMIOBase = arm64vm.SnapshotBase
@@ -174,7 +174,7 @@ func (b *runtimeBackend) StartStream(ctx context.Context, req client.CreateInsta
 			osName:         "Linux",
 			session:        session,
 			root:           image.RootFS,
-			baseEnv:        vmruntime.WithDefaultEnv(image.Config.Env),
+			baseEnv:        vmruntime.WithDefaultEnv(vmruntime.MergeEnv(image.Config.Env, req.Env)),
 			defaultUser:    req.DefaultUser,
 			workDir:        workDir,
 			network:        network,
@@ -328,7 +328,7 @@ func (b *runtimeBackend) StartBlankStream(ctx context.Context, req client.StartI
 		}
 		inst.root = image.RootFS
 		inst.defaultRootDir = mountPath
-		inst.baseEnv = vmruntime.WithDefaultEnv(image.Config.Env)
+		inst.baseEnv = vmruntime.WithDefaultEnv(vmruntime.MergeEnv(image.Config.Env, req.Env))
 		if image.Config.WorkingDir != "" {
 			inst.workDir = image.Config.WorkingDir
 		}

@@ -1,0 +1,2081 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "NeurodeskAppX local backend API",
+    "version": "1.0.0",
+    "description": "Launch NeurodeskAppX --headless. Use the loopback address and fresh bearer token from its single stdout JSON readiness line. No initial window or VM. All requests originate in the controlling process, without a browser Origin. Requests reject null and duplicate JSON keys. Mutations require UUID idempotency keys; use operation polling, not log scraping. One active VM/window per process. See headless.md for lifecycle and compatibility."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "variables": {
+        "port": {
+          "default": "49152",
+          "description": "Use the port printed in the readiness handshake."
+        }
+      }
+    }
+  ],
+  "paths": {
+    "/v1/info": {
+      "get": {
+        "operationId": "getInfo",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/virtualization": {
+      "get": {
+        "operationId": "checkVirtualization",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Virtualization"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/images/pull": {
+      "post": {
+        "operationId": "pullImage",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted; poll Location for completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acceptance"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative operation polling URL."
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PullRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operations/{operation_id}": {
+      "get": {
+        "operationId": "getOperation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/vms": {
+      "post": {
+        "operationId": "startVM",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted; poll Location for completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acceptance"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative operation polling URL."
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VMRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vms/{vm_id}": {
+      "get": {
+        "operationId": "getVM",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vm_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VM"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/vms/{vm_id}/glass": {
+      "post": {
+        "operationId": "spawnGlass",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vm_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted; poll Location for completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acceptance"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative operation polling URL."
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GlassRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/vms/{vm_id}/stop": {
+      "post": {
+        "operationId": "stopVM",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vm_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted; poll Location for completion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acceptance"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              },
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Relative operation polling URL."
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeoutRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/shutdown": {
+      "post": {
+        "operationId": "shutdown",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Shutdown"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "no-store"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ErrorDefault"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "405": {
+            "$ref": "#/components/responses/Error405"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          },
+          "504": {
+            "$ref": "#/components/responses/Error504"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeoutRequest"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "details",
+          "retryable"
+        ],
+        "additionalProperties": false
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/Error"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "PullRequest": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "minLength": 1,
+            "description": "OCI tag or sha256 digest reference. No URL scheme or credentials."
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "linux/arm64",
+              "linux/amd64"
+            ]
+          },
+          "policy": {
+            "type": "string",
+            "enum": [
+              "if_missing",
+              "refresh"
+            ]
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400,
+            "default": 1800
+          }
+        },
+        "required": [
+          "reference"
+        ],
+        "additionalProperties": false
+      },
+      "Kernel": {
+        "type": "object",
+        "properties": {
+          "kernel_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "cache_hit": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kernel_id",
+          "version",
+          "platform",
+          "cache_hit"
+        ],
+        "additionalProperties": false
+      },
+      "Image": {
+        "type": "object",
+        "properties": {
+          "image_id": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "cache_hit": {
+            "type": "boolean"
+          },
+          "kernel": {
+            "$ref": "#/components/schemas/Kernel"
+          }
+        },
+        "required": [
+          "image_id",
+          "reference",
+          "digest",
+          "platform",
+          "cache_hit",
+          "kernel"
+        ],
+        "additionalProperties": false
+      },
+      "Home": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "persistent",
+              "ephemeral"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "Storage": {
+        "type": "object",
+        "properties": {
+          "host_path": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Absolute native host directory path."
+          },
+          "create": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "host_path"
+        ],
+        "additionalProperties": false
+      },
+      "Share": {
+        "type": "object",
+        "properties": {
+          "host_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "guest_path": {
+            "type": "string",
+            "pattern": "^/"
+          },
+          "read_only": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "host_path",
+          "guest_path"
+        ],
+        "additionalProperties": false
+      },
+      "Network": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "allow_internet": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "Display": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 8192,
+            "default": 1440
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 8192,
+            "default": 900
+          },
+          "gpu_acceleration": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "CVMFS": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "mirror": {
+            "type": "string",
+            "description": "auto or a configured product mirror; only valid when enabled."
+          },
+          "cache_limit_bytes": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "Environment": {
+        "type": "object",
+        "propertyNames": {
+          "allOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            {
+              "not": {
+                "type": "string",
+                "pattern": "^(CCX3_|VMSH_)"
+              }
+            }
+          ]
+        },
+        "additionalProperties": {
+          "type": "string",
+          "pattern": "^[^\u0000]*$"
+        },
+        "description": "Guest startup environment; values are strings, including booleans/dates. Explicit values override product defaults, subject to CVMFS compatibility."
+      },
+      "VMRequest": {
+        "type": "object",
+        "properties": {
+          "image_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+          },
+          "memory_mib": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "cpus": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "user": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          },
+          "home": {
+            "$ref": "#/components/schemas/Home"
+          },
+          "storage": {
+            "$ref": "#/components/schemas/Storage"
+          },
+          "shares": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Share"
+            }
+          },
+          "network": {
+            "$ref": "#/components/schemas/Network"
+          },
+          "display": {
+            "$ref": "#/components/schemas/Display"
+          },
+          "cvmfs": {
+            "$ref": "#/components/schemas/CVMFS"
+          },
+          "boot_timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3600,
+            "default": 600
+          },
+          "env": {
+            "$ref": "#/components/schemas/Environment"
+          }
+        },
+        "required": [
+          "image_id"
+        ],
+        "additionalProperties": false
+      },
+      "GlassRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "default": "Neurodesk"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 8192
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 8192
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 600,
+            "default": 120
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "TimeoutRequest": {
+        "type": "object",
+        "properties": {
+          "timeout_seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300,
+            "default": 30
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "Glass": {
+        "type": "object",
+        "properties": {
+          "glass_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "open",
+              "closed",
+              "failed"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 8192
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 320,
+            "maximum": 8192
+          }
+        },
+        "required": [
+          "glass_id",
+          "state",
+          "title",
+          "width",
+          "height"
+        ],
+        "additionalProperties": false
+      },
+      "VMResult": {
+        "type": "object",
+        "properties": {
+          "vm_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "stopped"
+            ]
+          }
+        },
+        "required": [
+          "vm_id",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "VM": {
+        "type": "object",
+        "properties": {
+          "vm_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "image_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "running",
+              "stopping",
+              "stopped",
+              "failed"
+            ]
+          },
+          "config": {
+            "$ref": "#/components/schemas/VMRequest"
+          },
+          "glass": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Glass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "active_operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "vm_id",
+          "name",
+          "image_id",
+          "state",
+          "config",
+          "glass",
+          "active_operation_id",
+          "last_error"
+        ],
+        "additionalProperties": false
+      },
+      "Virtualization": {
+        "type": "object",
+        "properties": {
+          "supported": {
+            "type": "boolean"
+          },
+          "accessible": {
+            "type": "boolean"
+          },
+          "backend": {
+            "type": "string",
+            "enum": [
+              "hvf",
+              "kvm",
+              "whp",
+              "none"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "unsupported_platform",
+                      "permission_denied",
+                      "virtualization_disabled",
+                      "hypervisor_unavailable",
+                      "probe_failed"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "supported",
+          "accessible",
+          "backend",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "Acceptance": {
+        "type": "object",
+        "properties": {
+          "operation_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image_pull",
+              "vm_start",
+              "glass_spawn",
+              "vm_stop"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued"
+            ]
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "operation_id",
+          "kind",
+          "state",
+          "resource_id"
+        ],
+        "additionalProperties": false
+      },
+      "Artifact": {
+        "type": "object",
+        "properties": {
+          "artifact_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image_manifest",
+              "image_config",
+              "image_layer",
+              "kernel",
+              "kernel_module",
+              "dependency"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "resolving",
+              "downloading",
+              "retrying",
+              "cached",
+              "verifying",
+              "preparing",
+              "ready",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "completed_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rate_bytes_per_second": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "artifact_id",
+          "kind",
+          "name",
+          "reference",
+          "digest",
+          "state",
+          "completed_bytes",
+          "total_bytes",
+          "rate_bytes_per_second",
+          "eta_seconds",
+          "attempt",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "Progress": {
+        "type": "object",
+        "properties": {
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_bytes": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rate_bytes_per_second": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "eta_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "planning_complete": {
+            "type": "boolean"
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Artifact"
+            }
+          }
+        },
+        "required": [
+          "updated_at",
+          "completed_bytes",
+          "total_bytes",
+          "rate_bytes_per_second",
+          "eta_seconds",
+          "planning_complete",
+          "artifacts"
+        ],
+        "additionalProperties": false
+      },
+      "Operation": {
+        "type": "object",
+        "properties": {
+          "operation_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "image_pull",
+              "vm_start",
+              "glass_spawn",
+              "vm_stop"
+            ]
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "resolving",
+              "downloading",
+              "preparing",
+              "checking",
+              "booting",
+              "desktop_starting",
+              "window_opening",
+              "stopping",
+              "complete"
+            ]
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Progress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Image"
+              },
+              {
+                "$ref": "#/components/schemas/VMResult"
+              },
+              {
+                "$ref": "#/components/schemas/Glass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Error"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "operation_id",
+          "kind",
+          "resource_id",
+          "state",
+          "phase",
+          "progress",
+          "created_at",
+          "finished_at",
+          "result",
+          "error"
+        ],
+        "additionalProperties": false
+      },
+      "Info": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "ndappx"
+            ]
+          },
+          "api_version": {
+            "const": 1
+          },
+          "version": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "shutting_down"
+            ]
+          },
+          "platform": {
+            "type": "object",
+            "properties": {
+              "os": {
+                "type": "string"
+              },
+              "arch": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "os",
+              "arch"
+            ],
+            "additionalProperties": false
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "max_active_vms": {
+                "const": 1
+              },
+              "native_glass": {
+                "type": "boolean"
+              },
+              "gpu_acceleration": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "max_active_vms",
+              "native_glass",
+              "gpu_acceleration"
+            ],
+            "additionalProperties": false
+          },
+          "defaults": {
+            "type": "object",
+            "properties": {
+              "image": {
+                "type": "string"
+              },
+              "memory_mib": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "cpus": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "user": {
+                "type": "string"
+              },
+              "home_mode": {
+                "type": "string",
+                "enum": [
+                  "persistent"
+                ]
+              },
+              "storage_path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "image",
+              "memory_mib",
+              "cpus",
+              "user",
+              "home_mode",
+              "storage_path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "protocol",
+          "api_version",
+          "version",
+          "state",
+          "platform",
+          "capabilities",
+          "defaults"
+        ],
+        "additionalProperties": false
+      },
+      "Shutdown": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "stopped"
+            ]
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "Readiness": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string",
+            "enum": [
+              "ready"
+            ]
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "ndappx"
+            ]
+          },
+          "api_version": {
+            "const": 1
+          },
+          "base_url": {
+            "type": "string",
+            "pattern": "^http://127\\.0\\.0\\.1:[0-9]+$"
+          },
+          "token": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          },
+          "pid": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "event",
+          "protocol",
+          "api_version",
+          "base_url",
+          "token",
+          "pid"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "ErrorDefault": {
+        "description": "Request or backend error; see the error code and HTTP status.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error400": {
+        "description": "Invalid JSON, unknown/duplicate field, null, invalid type, or invalid request.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error401": {
+        "description": "Missing or invalid bearer token.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error403": {
+        "description": "Invalid Host or a browser Origin request.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error404": {
+        "description": "Unknown endpoint or ID.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error405": {
+        "description": "Wrong HTTP method.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "Conflicting lifecycle operation, resource owner, or idempotency key.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error413": {
+        "description": "JSON exceeds 1 MiB.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error415": {
+        "description": "Content-Type must be application/json.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error422": {
+        "description": "Unsupported configuration or unmet preparation prerequisite.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error500": {
+        "description": "Internal operation failure.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error503": {
+        "description": "Backend is draining.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      },
+      "Error504": {
+        "description": "Graceful shutdown deadline expired; retry with a new idempotency key.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        },
+        "headers": {
+          "Cache-Control": {
+            "schema": {
+              "const": "no-store"
+            }
+          }
+        }
+      }
+    }
+  }
+}

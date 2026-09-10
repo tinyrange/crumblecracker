@@ -1222,9 +1222,6 @@ func (f *FS) completeWorksInline(completions []fsInlineCompletion) error {
 			if completion.err != nil {
 				return completion.err
 			}
-			if !completion.reply.ok {
-				continue
-			}
 			if err := f.writeCompletionUsedLocked(q, completion.work, completion.reply); err != nil {
 				return err
 			}
@@ -1264,9 +1261,6 @@ func (f *FS) drainCompletionsLocked(qidx int) error {
 		f.nextCompleteSeq[qidx]++
 		if completion.err != nil {
 			return completion.err
-		}
-		if !completion.reply.ok {
-			continue
 		}
 		if err := f.writeCompletionLocked(q, completion.work, completion.reply); err != nil {
 			return err
@@ -1308,6 +1302,8 @@ func (f *FS) shouldInterruptCompletionLocked(q *queue, oldUsedIdx uint16) (bool,
 	return flags&fsAvailNoInterrupt == 0, nil
 }
 
+// Even requests without a FUSE response (FORGET) must return their descriptor
+// to the used ring. Linux drains these outstanding requests before unmounting.
 func (f *FS) writeCompletionUsedLocked(q *queue, work fsWork, reply fsReply) error {
 	var completeStart time.Time
 	if f.RecordTiming != nil {

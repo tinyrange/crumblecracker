@@ -134,7 +134,7 @@ func (b *runtimeBackend) StartStream(ctx context.Context, req client.CreateInsta
 			return nil, err
 		}
 		return &windowsInstance{
-			managedInstanceCore: newWindowsManagedCore(started.Session, image, vmruntime.WithDefaultEnv(image.Config.Env), workDir),
+			managedInstanceCore: newWindowsManagedCore(started.Session, image, vmruntime.WithDefaultEnv(vmruntime.MergeEnv(image.Config.Env, req.Env)), workDir),
 			image:               image,
 			rootFS:              rootFS,
 			fsdevs:              fsdevs,
@@ -169,7 +169,7 @@ func (b *runtimeBackend) StartStream(ctx context.Context, req client.CreateInsta
 	if qemuX8664 != "" {
 		initCfg.EmulatorTag = vmruntime.EmulatorTag
 	}
-	initCfg.Env = vmruntime.WithDefaultEnv(image.Config.Env)
+	initCfg.Env = vmruntime.WithDefaultEnv(vmruntime.MergeEnv(image.Config.Env, req.Env))
 	initCfg.WorkDir = workDir
 	initCfg.Network = windowsNetworkGuestInitConfig(network)
 	if strings.TrimSpace(req.SnapshotDir) != "" {
@@ -207,7 +207,7 @@ func (b *runtimeBackend) StartStream(ctx context.Context, req client.CreateInsta
 		_, _ = fmt.Fprintf(os.Stderr, "whp-arm64 backend +%s: managed service ready\n", time.Since(startTime).Round(time.Millisecond))
 	}
 	return &windowsInstance{
-		managedInstanceCore: newWindowsManagedCore(started.Session, image, vmruntime.WithDefaultEnv(image.Config.Env), workDir),
+		managedInstanceCore: newWindowsManagedCore(started.Session, image, vmruntime.WithDefaultEnv(vmruntime.MergeEnv(image.Config.Env, req.Env)), workDir),
 		image:               image,
 		rootFS:              rootFS,
 		fsdevs:              fsdevs,

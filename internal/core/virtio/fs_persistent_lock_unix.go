@@ -3,6 +3,7 @@
 package virtio
 
 import (
+	"errors"
 	"os"
 
 	"golang.org/x/sys/unix"
@@ -28,3 +29,5 @@ func syncPersistentDirectory(path string) error {
 	defer dir.Close()
 	return dir.Sync()
 }
+
+func persistentLockBusy(err error) bool { return errors.Is(err, unix.EWOULDBLOCK) }

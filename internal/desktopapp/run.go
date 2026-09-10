@@ -35,6 +35,7 @@ func Run(config Config, args []string) (retErr error) {
 		args = []string{appConfig.DefaultImage}
 	}
 	fs := flag.NewFlagSet(productName(), flag.ContinueOnError)
+	headless := fs.Bool("headless", false, "Serve the local Neurodesk backend API without an initial window")
 	name := fs.String("name", appConfig.DefaultVMName, "VM name")
 	home := fs.String("home", "", "Persistent home identity (defaults to the VM name)")
 	ephemeralHome := fs.Bool("ephemeral-home", appConfig.DefaultEphemeralHome, "Discard home-directory changes when the VM stops")
@@ -58,6 +59,21 @@ func Run(config Config, args []string) (retErr error) {
 	dmesg := fs.Bool("dmesg", false, "Forward the guest kernel log")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *headless {
+		if appConfig.Kind != "ndappx" {
+			return fmt.Errorf("headless mode is only supported by NeurodeskAppX")
+		}
+		var invalid string
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name != "headless" && f.Name != "cache-dir" {
+				invalid = f.Name
+			}
+		})
+		if invalid != "" || fs.NArg() != 0 {
+			return fmt.Errorf("headless mode accepts only --headless and --cache-dir")
+		}
+		return runHeadless(*cacheDir)
 	}
 	if err := platformCompatibilityError(); err != nil {
 		return err
