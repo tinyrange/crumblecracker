@@ -91,6 +91,7 @@ func StartManagedSessionWithOptions(ctx context.Context, kernel []byte, initrd [
 		gpu := virtio.NewGPU(arm64vm.GPUBase, arm64vm.GPUSize, arm64vm.GPUIRQ, framebuffer)
 		keyboard := virtio.NewKeyboardInput(arm64vm.KeyboardBase, arm64vm.KeyboardSize, arm64vm.KeyboardIRQ)
 		pointer := virtio.NewAbsolutePointerInput(arm64vm.PointerBase, arm64vm.PointerSize, arm64vm.PointerIRQ, opts.DisplayWidth, opts.DisplayHeight)
+		relativePointer := virtio.NewRelativePointerInput(arm64vm.RelativePointerBase, arm64vm.RelativePointerSize, arm64vm.RelativePointerIRQ)
 		clipboard := virtio.NewClipboard()
 		clipboardListener, err = backend.Listen(vmruntime.ClipboardPort)
 		if err != nil {
@@ -105,8 +106,8 @@ func StartManagedSessionWithOptions(ctx context.Context, kernel []byte, initrd [
 			vsock.Close()
 			return nil, fmt.Errorf("listen for guest display bridge: %w", err)
 		}
-		desktop = &virtio.Desktop{Framebuffer: framebuffer, GPU: gpu, Keyboard: keyboard, Pointer: pointer, Clipboard: clipboard}
-		displayDevices = []virtio.MMIODevice{gpu, keyboard, pointer}
+		desktop = &virtio.Desktop{Framebuffer: framebuffer, GPU: gpu, Keyboard: keyboard, Pointer: pointer, RelativePointer: relativePointer, Clipboard: clipboard}
+		displayDevices = []virtio.MMIODevice{gpu, keyboard, pointer, relativePointer}
 	}
 	displayListenersOwned := true
 	defer func() {
@@ -138,7 +139,7 @@ func StartManagedSessionWithOptions(ctx context.Context, kernel []byte, initrd [
 		nodes = append(nodes, opts.NetDevice.DeviceTreeNode())
 	}
 	if desktop != nil {
-		nodes = append(nodes, desktop.GPU.DeviceTreeNode(), desktop.Keyboard.DeviceTreeNode(), desktop.Pointer.DeviceTreeNode())
+		nodes = append(nodes, desktop.GPU.DeviceTreeNode(), desktop.Keyboard.DeviceTreeNode(), desktop.Pointer.DeviceTreeNode(), desktop.RelativePointer.DeviceTreeNode())
 	}
 	snapshot := newSnapshotTrigger(opts.SnapshotDir, nil)
 	if snapshot != nil {

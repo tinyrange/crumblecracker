@@ -300,6 +300,9 @@ func Run(config Config, args []string) (retErr error) {
 		Dmesg:            *dmesg,
 		TimeoutSeconds:   bootTimeout.Seconds(),
 	}
+	if appConfig.Kind == "squadvm" && runtime.GOOS == "darwin" && !*vnc {
+		request.Env = append(request.Env, "CCX3_RELATIVE_POINTER=1")
+	}
 	if appConfig.CVMFSHostMount != nil {
 		request.Env = append(request.Env, "CVMFS_DISABLE=true", "NEURODESKTOP_CVMFS_STARTUP_MODE=external")
 	}
@@ -573,7 +576,16 @@ func Run(config Config, args []string) (retErr error) {
 				}
 				monitorDone <- err
 			}()
-			return displayStarted{Session: session, Stopped: stopped}, nil
+			captureReady := false
+			relativeDesktopReady := false
+			if appConfig.Kind == "squadvm" {
+				result, probeErr := api.RunInContext(ctx, *name, client.RunRequest{Command: []string{"test", "-f", "/run/user/1000/squadvm-relative-pointer-ready"}, User: "root", TimeoutSeconds: 5})
+				captureReady = probeErr == nil && result.ExitCode == 0
+				result, probeErr = api.RunInContext(ctx, *name, client.RunRequest{Command: []string{"test", "-f", "/run/user/1000/squadvm-relative-desktop-ready"}, User: "root", TimeoutSeconds: 5})
+				relativeDesktopReady = probeErr == nil && result.ExitCode == 0
+				captureReady = captureReady || relativeDesktopReady
+			}
+			return displayStarted{Session: session, Stopped: stopped, MouseCaptureReady: captureReady, RelativeDesktopReady: relativeDesktopReady}, nil
 		}
 		var cvmfsStatus cvmfsStatusSource
 		if appConfig.CVMFSHostMount != nil {

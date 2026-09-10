@@ -68,6 +68,10 @@ const (
 	KeyboardSize = 0x1000
 	KeyboardIRQ  = 49
 
+	RelativePointerBase = 0x0a10c000
+	RelativePointerSize = 0x1000
+	RelativePointerIRQ  = 51
+
 	PointerBase = 0x0a10b000
 	PointerSize = 0x1000
 	PointerIRQ  = 50

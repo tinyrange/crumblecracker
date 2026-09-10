@@ -247,6 +247,7 @@ func newManagedDesktop(backend *virtio.SimpleVsockBackend, width, height uint32)
 	gpu := virtio.NewGPU(amd64vm.GPUBase, amd64vm.GPUSize, amd64vm.GPUIRQ, framebuffer)
 	keyboard := virtio.NewKeyboardInput(amd64vm.KeyboardBase, amd64vm.KeyboardSize, amd64vm.KeyboardIRQ)
 	pointer := virtio.NewAbsolutePointerInput(amd64vm.PointerBase, amd64vm.PointerSize, amd64vm.PointerIRQ, width, height)
+	relativePointer := virtio.NewRelativePointerInput(amd64vm.RelativePointerBase, amd64vm.RelativePointerSize, amd64vm.RelativePointerIRQ)
 	clipboard := virtio.NewClipboard()
 	clipboardListener, err := backend.Listen(vmruntime.ClipboardPort)
 	if err != nil {
@@ -258,13 +259,14 @@ func newManagedDesktop(backend *virtio.SimpleVsockBackend, width, height uint32)
 		return nil, nil, nil, nil, fmt.Errorf("listen for guest display bridge: %w", err)
 	}
 	desktop := &virtio.Desktop{
-		Framebuffer: framebuffer,
-		GPU:         gpu,
-		Keyboard:    keyboard,
-		Pointer:     pointer,
-		Clipboard:   clipboard,
+		Framebuffer:     framebuffer,
+		GPU:             gpu,
+		Keyboard:        keyboard,
+		Pointer:         pointer,
+		RelativePointer: relativePointer,
+		Clipboard:       clipboard,
 	}
-	return desktop, []virtio.MMIODevice{gpu, keyboard, pointer}, clipboardListener, displayListener, nil
+	return desktop, []virtio.MMIODevice{gpu, keyboard, pointer, relativePointer}, clipboardListener, displayListener, nil
 }
 
 func closeManagedDisplayListeners(clipboardListener, displayListener io.Closer) {

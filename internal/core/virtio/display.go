@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"sync"
+	"time"
 )
 
 // Framebuffer is the host-visible scanout shared by virtio-gpu and display
@@ -27,25 +28,29 @@ type FramebufferUpdate struct {
 }
 
 type CursorUpdate struct {
-	Width      int
-	Height     int
-	HotX       int
-	HotY       int
-	Visible    bool
-	Generation uint64
-	Pixels     []byte
+	X, Y               int
+	PositionGeneration uint64
+	Width              int
+	Height             int
+	HotX               int
+	HotY               int
+	Visible            bool
+	Generation         uint64
+	Pixels             []byte
 }
 
 // Cursor is the host-visible virtio-gpu cursor plane.
 type Cursor struct {
-	mu         sync.Mutex
-	width      int
-	height     int
-	hotX       int
-	hotY       int
-	visible    bool
-	generation uint64
-	pixels     []byte
+	x, y               int
+	positionGeneration uint64
+	mu                 sync.Mutex
+	width              int
+	height             int
+	hotX               int
+	hotY               int
+	visible            bool
+	generation         uint64
+	pixels             []byte
 }
 
 func (c *Cursor) Update(width, height, hotX, hotY int, pixels []byte) {
@@ -62,6 +67,13 @@ func (c *Cursor) Update(width, height, hotX, hotY int, pixels []byte) {
 	c.generation++
 }
 
+func (c *Cursor) Move(x, y int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.x, c.y = x, y
+	c.positionGeneration++
+}
+
 func (c *Cursor) Hide() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -76,6 +88,7 @@ func (c *Cursor) Snapshot() CursorUpdate {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return CursorUpdate{
+		X: c.x, Y: c.y, PositionGeneration: c.positionGeneration,
 		Width: c.width, Height: c.height, HotX: c.hotX, HotY: c.hotY,
 		Visible: c.visible, Generation: c.generation,
 		Pixels: c.pixels,
@@ -241,14 +254,19 @@ func (f *Framebuffer) Snapshot(request image.Rectangle, since uint64, incrementa
 
 // Desktop binds a scanout to the virtio input devices used by a frontend.
 type Desktop struct {
-	Framebuffer *Framebuffer
-	GPU         *GPU
-	Keyboard    *Input
-	Pointer     *Input
-	Clipboard   *Clipboard
+	Framebuffer     *Framebuffer
+	GPU             *GPU
+	Keyboard        *Input
+	Pointer         *Input
+	RelativePointer *Input
+	Clipboard       *Clipboard
 
-	resizeMu       sync.Mutex
-	resizeRequests chan DisplaySize
+	pointerMu           sync.Mutex
+	relativePointerMode bool
+	pointerX, pointerY  int
+	pointerMotionAt     time.Time
+	resizeMu            sync.Mutex
+	resizeRequests      chan DisplaySize
 }
 
 type DisplaySize struct {

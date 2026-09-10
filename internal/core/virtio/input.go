@@ -28,6 +28,8 @@ const (
 	inputEventAbs = 0x03
 
 	inputSynReport      = 0
+	inputRelX           = 0
+	inputRelY           = 1
 	inputRelHWheel      = 0x06
 	inputRelWheel       = 0x08
 	inputRelWheelHiRes  = 0x0b
@@ -44,6 +46,7 @@ type InputKind uint8
 const (
 	InputKeyboard InputKind = iota
 	InputAbsolutePointer
+	InputRelativePointer
 )
 
 type InputEvent struct {
@@ -96,6 +99,40 @@ func NewAbsolutePointerInput(base, size uint64, irq uint32, width, height uint32
 	}
 	i.resetLocked()
 	return i
+}
+
+func NewRelativePointerInput(base, size uint64, irq uint32) *Input {
+	i := &Input{Base: base, Size: size, IRQ: irq, Kind: InputRelativePointer}
+	i.resetLocked()
+	return i
+}
+
+// RelativePointerEvent preserves signed deltas; movement must never be scaled
+// to the absolute tablet range or coalesced by discarding earlier deltas.
+func (i *Input) RelativePointerEvent(dx, dy int32, buttons, previous uint8) error {
+	events := []InputEvent{}
+	if dx != 0 {
+		events = append(events, InputEvent{Type: inputEventRel, Code: inputRelX, Value: dx})
+	}
+	if dy != 0 {
+		events = append(events, InputEvent{Type: inputEventRel, Code: inputRelY, Value: dy})
+	}
+	for _, b := range []struct {
+		mask uint8
+		code uint16
+	}{{1, inputBtnLeft}, {2, inputBtnMiddle}, {4, inputBtnRight}} {
+		if buttons&b.mask != previous&b.mask {
+			value := int32(0)
+			if buttons&b.mask != 0 {
+				value = 1
+			}
+			events = append(events, InputEvent{Type: inputEventKey, Code: b.code, Value: value})
+		}
+	}
+	if len(events) == 0 {
+		return nil
+	}
+	return i.Send(append(events, InputEvent{Type: inputEventSyn, Code: inputSynReport})...)
 }
 
 func (i *Input) Attach(mem GuestMemory, irq IRQController) {
@@ -475,6 +512,9 @@ func (i *Input) configBytesLocked() []byte {
 		if i.Kind == InputAbsolutePointer {
 			name = "cc absolute pointer"
 		}
+		if i.Kind == InputRelativePointer {
+			name = "cc relative pointer"
+		}
 		data = []byte(name)
 	case inputConfigSerial:
 		data = []byte("glass")
@@ -510,6 +550,9 @@ func (i *Input) eventBitmapLocked(eventType byte) []byte {
 		bitmap := make([]byte, 1)
 		setInputBit(bitmap, inputEventSyn)
 		setInputBit(bitmap, inputEventKey)
+		if i.Kind == InputRelativePointer {
+			setInputBit(bitmap, inputEventRel)
+		}
 		if i.Kind == InputAbsolutePointer {
 			setInputBit(bitmap, inputEventRel)
 			setInputBit(bitmap, inputEventAbs)
@@ -529,8 +572,12 @@ func (i *Input) eventBitmapLocked(eventType byte) []byte {
 		setInputBit(bitmap, inputBtnMiddle)
 		return bitmap
 	case inputEventRel:
-		if i.Kind == InputAbsolutePointer {
+		if i.Kind == InputAbsolutePointer || i.Kind == InputRelativePointer {
 			bitmap := make([]byte, inputRelHWheelHiRes/8+1)
+			if i.Kind == InputRelativePointer {
+				setInputBit(bitmap, inputRelX)
+				setInputBit(bitmap, inputRelY)
+			}
 			setInputBit(bitmap, inputRelHWheel)
 			setInputBit(bitmap, inputRelWheel)
 			setInputBit(bitmap, inputRelWheelHiRes)

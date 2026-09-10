@@ -54,6 +54,27 @@ groups so both X11 and direct EGL applications can use the GPU. This requires
 an updated SquadVM image. Existing home directories do not need to be reset.
 Intel Macs and other hosts retain the software rendering path.
 
+The native top bar includes **Open shared folder**, which opens the currently
+configured host share in Finder, Explorer, or the host file manager. The same
+control is available in NeurodeskAppX, including windows opened by its headless API.
+
+On macOS, the native app uses a single relative mouse in supported images. Move
+into the guest display to control its virtual cursor; crossing an edge releases
+the pointer back to the host at that edge. **Force lock: off/on** selects whether movement stays captured
+for games such as Cube 2. **Ctrl + Option** releases it explicitly. Focus loss and
+window close also release capture, guest mouse buttons, and held keys. Force lock
+stays selected after a temporary release or focus change for the rest of the
+window session. Re-entering the guest uses that mode without moving the game
+camera to match the host cursor. To return to automatic edge release, press
+**Ctrl + Option**, then click **Force lock: on** to turn it off.
+
+This mode needs an updated app and image. The app requests
+`CCX3_RELATIVE_POINTER=1`; guest init publishes `/run/ccx3-relative-pointer`, and
+SquadVM starts Xorg with `xorg-relative.conf`. The image advertises
+`/run/user/1000/squadvm-relative-desktop-ready` after the device is ready. Other
+hosts, VNC, and older apps retain the default input configuration. No SDL changes
+are required.
+
 For an opt-in release check, copy `check-gpu.sh` into the shared directory and
 run `sh /shared/check-gpu.sh` from a guest desktop terminal, without sudo.
 The image includes `glxinfo` and `eglinfo`; the check requires accelerated VirGL

@@ -19,13 +19,15 @@ type FramebufferUpdate struct {
 // CursorUpdate is the guest-provided ARGB cursor image. Pixels are tightly
 // packed in blue, green, red, alpha byte order.
 type CursorUpdate struct {
-	Width      int
-	Height     int
-	HotX       int
-	HotY       int
-	Visible    bool
-	Generation uint64
-	Pixels     []byte
+	X, Y               int
+	PositionGeneration uint64
+	Width              int
+	Height             int
+	HotX               int
+	HotY               int
+	Visible            bool
+	Generation         uint64
+	Pixels             []byte
 }
 
 // OpenGLFrame is a leased texture produced in the presentation context's
@@ -92,4 +94,10 @@ type HighResolutionScroller interface {
 // hardware cursor independently from the framebuffer.
 type CursorProvider interface {
 	Cursor() CursorUpdate
+}
+
+// RelativePointerSession sends unscaled mouse counts through a relative device.
+type RelativePointerSession interface {
+	RelativePointer(dx, dy int32, buttons, previousButtons uint8) error
+	RelativeScroll(dx120, dy120 int32) error
 }

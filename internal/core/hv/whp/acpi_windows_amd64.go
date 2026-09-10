@@ -99,7 +99,7 @@ func buildBootMADT(cpus int) []byte {
 	body = binary.LittleEndian.AppendUint32(body, 0)
 
 	body = appendMADTInterruptOverride(body, 0, 2, 0)
-	for irq := byte(5); irq <= amd64vm.PointerIRQ; irq++ {
+	for irq := byte(5); irq <= amd64vm.RelativePointerIRQ; irq++ {
 		body = appendMADTInterruptOverride(body, irq, uint32(irq), 0x000d)
 	}
 	return body

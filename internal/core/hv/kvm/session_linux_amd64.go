@@ -97,6 +97,7 @@ func StartManagedSessionWithNetOptions(ctx context.Context, kernel []byte, initr
 		gpu := virtio.NewGPU(amd64vm.GPUBase, amd64vm.GPUSize, amd64vm.GPUIRQ, framebuffer)
 		keyboard := virtio.NewKeyboardInput(amd64vm.KeyboardBase, amd64vm.KeyboardSize, amd64vm.KeyboardIRQ)
 		pointer := virtio.NewAbsolutePointerInput(amd64vm.PointerBase, amd64vm.PointerSize, amd64vm.PointerIRQ, opts.DisplayWidth, opts.DisplayHeight)
+		relativePointer := virtio.NewRelativePointerInput(amd64vm.RelativePointerBase, amd64vm.RelativePointerSize, amd64vm.RelativePointerIRQ)
 		clipboard := virtio.NewClipboard()
 		clipboardListener, err = backend.Listen(vmruntime.ClipboardPort)
 		if err != nil {
@@ -104,7 +105,7 @@ func StartManagedSessionWithNetOptions(ctx context.Context, kernel []byte, initr
 			vsock.Close()
 			return nil, fmt.Errorf("listen for guest clipboard bridge: %w", err)
 		}
-		desktop = &virtio.Desktop{Framebuffer: framebuffer, GPU: gpu, Keyboard: keyboard, Pointer: pointer, Clipboard: clipboard}
+		desktop = &virtio.Desktop{Framebuffer: framebuffer, GPU: gpu, Keyboard: keyboard, Pointer: pointer, RelativePointer: relativePointer, Clipboard: clipboard}
 		displayListener, err = backend.Listen(vmruntime.DisplayPort)
 		if err != nil {
 			_ = clipboardListener.Close()
@@ -112,7 +113,7 @@ func StartManagedSessionWithNetOptions(ctx context.Context, kernel []byte, initr
 			vsock.Close()
 			return nil, fmt.Errorf("listen for guest display bridge: %w", err)
 		}
-		displayDevices = []virtio.MMIODevice{gpu, keyboard, pointer}
+		displayDevices = []virtio.MMIODevice{gpu, keyboard, pointer, relativePointer}
 	}
 	if targetPages := balloonTargetPages(opts.BalloonMB); targetPages != 0 {
 		if err := balloon.SetTargetPages(targetPages); err != nil {
@@ -202,6 +203,7 @@ func StartManagedSessionWithNetOptions(ctx context.Context, kernel []byte, initr
 			amd64vm.VirtioMMIODeviceArg(amd64vm.GPUBase, amd64vm.GPUIRQ),
 			amd64vm.VirtioMMIODeviceArg(amd64vm.KeyboardBase, amd64vm.KeyboardIRQ),
 			amd64vm.VirtioMMIODeviceArg(amd64vm.PointerBase, amd64vm.PointerIRQ),
+			amd64vm.VirtioMMIODeviceArg(amd64vm.RelativePointerBase, amd64vm.RelativePointerIRQ),
 		)
 	}
 	extraCmdline = append(extraCmdline, linuxKVMHostKernelArgs()...)

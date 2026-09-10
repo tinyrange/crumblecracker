@@ -70,8 +70,10 @@ func updateStartupChecklist(items []startupChecklistItem, progress startupProgre
 type displayPreflight func(context.Context) (startupPreflight, error)
 
 type displayStarted struct {
-	Session display.Session
-	Stopped <-chan struct{}
+	MouseCaptureReady    bool
+	RelativeDesktopReady bool
+	Session              display.Session
+	Stopped              <-chan struct{}
 }
 
 type displayStart func(context.Context, startupOptions, func(startupProgress)) (displayStarted, error)
