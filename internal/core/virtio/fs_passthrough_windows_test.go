@@ -151,3 +151,22 @@ func TestWindowsSharedOwnershipUpdatesAcrossAttachments(t *testing.T) {
 		t.Fatalf("concurrent ownership updates lost: %+v %v", attr, err)
 	}
 }
+
+func TestWindowsCreateExistingSharePreservesMappedOwner(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("data"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fsys := NewPassthroughFSWithOwner(root, nil, 1000, 1000).(*passthroughFS)
+	id, fh, attr, errno := fsys.Create(1, "file", linuxORDWR, 0600, 0, 0)
+	if errno != 0 {
+		t.Fatal(errno)
+	}
+	defer fsys.Release(id, fh)
+	if attr.UID != 1000 || attr.GID != 1000 {
+		t.Fatalf("root O_CREAT replaced mapped owner: %+v", attr)
+	}
+	if _, err := os.Stat(filepath.Join(root, "file") + hostMetadataStream); !os.IsNotExist(err) {
+		t.Fatalf("existing host file gained guest metadata: %v", err)
+	}
+}

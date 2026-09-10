@@ -144,6 +144,7 @@ type displayViewer struct {
 	keysDown            map[window.Key]bool
 	guestClipboardGen   uint64
 	hostClipboard       string
+	hostClipboardKnown  bool
 	lastResize          image.Point
 	pendingResize       image.Point
 	resizeChangedAt     time.Time
@@ -604,6 +605,7 @@ func (v *displayViewer) loop(ctx context.Context) error {
 	defer clipboard.Close()
 	if text, err := clipboard.ReadText(); err == nil {
 		v.hostClipboard = text
+		v.hostClipboardKnown = true
 	}
 	nextClipboardCheck := time.Now()
 	for v.window.Poll() {
@@ -651,7 +653,9 @@ func (v *displayViewer) loop(ctx context.Context) error {
 					}
 					v.lastResize = image.Pt(v.settings.DisplayWidth, v.settings.DisplayHeight)
 					v.attemptStopped = result.started.Stopped
-					v.session.SetClipboard(v.hostClipboard)
+					if v.hostClipboardKnown {
+						v.session.SetClipboard(v.hostClipboard)
+					}
 					v.presentation.markGuestReady()
 					v.setStartupProgress(desktopStartupProgress("Waiting for a complete desktop frame"))
 				}
@@ -3080,6 +3084,7 @@ func (v *displayViewer) syncClipboard(clipboard hostClipboard) error {
 		}
 	}
 	v.hostClipboard = decision.text
+	v.hostClipboardKnown = true
 	v.guestClipboardGen = decision.guestGeneration
 	return nil
 }

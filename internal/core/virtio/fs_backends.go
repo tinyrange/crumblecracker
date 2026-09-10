@@ -782,13 +782,23 @@ func (p *passthroughFS) Create(parent uint64, name string, flags uint32, mode ui
 		return 0, 0, FuseAttr{}, -linuxEINVAL
 	}
 	host := filepath.Join(hostParent, filepath.FromSlash(rel))
-	file, err := hostfile.OpenFile(host, p.translateOpenFlags(flags)|os.O_CREATE, fs.FileMode(mode&linuxPermMask))
+	// Distinguish creation from opening an existing file without a stat/open
+	// race, so O_CREAT cannot reset an existing file's ownership or mode.
+	openFlags := p.translateOpenFlags(flags)
+	file, err := hostfile.OpenFile(host, openFlags|os.O_CREATE|os.O_EXCL, fs.FileMode(mode&linuxPermMask))
+	created := err == nil
+	if errors.Is(err, os.ErrExist) && flags&linuxOEXCL == 0 {
+		file, err = hostfile.OpenFile(host, openFlags&^(os.O_CREATE|os.O_EXCL), 0)
+	}
 	if err != nil {
 		return 0, 0, FuseAttr{}, errnoFromError(err)
 	}
-	if err := initHostMetadata(host, mode, uid, gid); err != nil {
-		_ = file.Close()
-		return 0, 0, FuseAttr{}, errnoFromError(err)
+	if created {
+		if err := initHostMetadata(host, mode, uid, gid); err != nil {
+			_ = file.Close()
+			_ = os.Remove(host)
+			return 0, 0, FuseAttr{}, errnoFromError(err)
+		}
 	}
 	info, err := os.Lstat(host)
 	if err != nil {
