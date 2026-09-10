@@ -23,6 +23,7 @@ xserver-xorg-core
 xserver-xorg-input-evdev
 xserver-xorg-input-libinput
 libgl1-mesa-dri
+mesa-utils
 
 # General command-line and development environment
 bash-completion

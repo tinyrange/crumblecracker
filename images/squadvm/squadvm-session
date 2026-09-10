@@ -59,7 +59,10 @@ while [ ! -S /run/dbus/system_bus_socket ]; do
     sleep 0.05
 done
 
-setsid setpriv --reuid="$uid" --regid="$gid" --clear-groups env \
+# EGL applications need the render group to open the DRM render node directly.
+# X11 can pass a GPU file descriptor through DRI3 even when these groups are
+# missing, so a working GLX application alone does not verify GPU access.
+setsid setpriv --reuid="$uid" --regid="$gid" --init-groups env \
     -u GDK_CORE_DEVICE_EVENTS \
     DISPLAY=:0 \
     HOME="$home" \
