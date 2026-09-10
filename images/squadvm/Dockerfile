@@ -104,7 +104,7 @@ RUN apt-get update \
 ENV PWNDBG_NO_AUTOUPDATE=1
 
 RUN useradd --create-home --uid "${SQUADVM_UID}" --shell /bin/bash "${SQUADVM_USER}" \
-    && usermod -aG sudo,wireshark "${SQUADVM_USER}" \
+    && usermod -aG sudo,wireshark,video,render "${SQUADVM_USER}" \
     && printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "${SQUADVM_USER}" > "/etc/sudoers.d/${SQUADVM_USER}" \
     && chmod 0440 "/etc/sudoers.d/${SQUADVM_USER}" \
     && if [ -x /usr/bin/dumpcap ]; then \

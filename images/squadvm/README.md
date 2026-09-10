@@ -47,6 +47,22 @@ persists the image home directory, and maps `~/squadvm-shared` on the host to
 `/shared` in the guest. Pass another OCI reference as the final argument to
 test a locally published image.
 
+On Apple silicon Macs, enable **Experimental GPU acceleration** in SquadVM's
+settings before starting the VM. The guest uses Mesa VirGL for OpenGL; the
+desktop user belongs to `video` and `render`, and the session retains those
+groups so both X11 and direct EGL applications can use the GPU. This requires
+an updated SquadVM image. Existing home directories do not need to be reset.
+Intel Macs and other hosts retain the software rendering path.
+
+For an opt-in release check, copy `check-gpu.sh` into the shared directory and
+run `sh /shared/check-gpu.sh` from a guest desktop terminal, without sudo.
+The image includes `glxinfo` and `eglinfo`; the check requires accelerated VirGL
+through both GLX and surfaceless EGL and fails if the desktop user lacks DRM
+access. With acceleration disabled, failure is expected. For rendered-frame
+coverage, the [Firefox WebGL fixture](../gpu-firefox/README.md) exercises four
+scenes and records pixel readbacks. These checks are manual and do not add VM
+boots to commit CI.
+
 For opt-in framebuffer capture and guest keyboard or pointer control without
 host OS automation, see the shared
 [desktop automation API](../../docs/desktop-automation.md).
