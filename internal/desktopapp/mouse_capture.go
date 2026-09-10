@@ -85,12 +85,19 @@ func (v *displayViewer) sendRelativePointer(dx, dy float32) error {
 	return nil
 }
 
-func toolbarActionBounds(insets window.TitleBarInsets, capture bool) (folder, mouse image.Rectangle) {
-	left := int(insets.Left) + 8
-	folder = image.Rect(left, 3, left+120, int(appChromeHeight)-3)
-	if capture {
-		mouse = image.Rect(folder.Max.X+6, 3, folder.Max.X+170, int(appChromeHeight)-3)
+func toolbarActionBounds(width float32, insets window.TitleBarInsets, capture, cvmfs bool) (folder, mouse image.Rectangle) {
+	buttonWidth := 164
+	right := int(width-insets.Right) - 8
+	if cvmfs {
+		right = cvmfsChromeStatusBounds(width, insets).Min.X - 8
 	}
+	if capture {
+		// Keep room for a centered title when the window is narrow.
+		buttonWidth = min(buttonWidth, max(100, (int(width/2)-80-int(insets.Right)-16)/2))
+		mouse = image.Rect(right-buttonWidth, 3, right, int(appChromeHeight)-3)
+		right = mouse.Min.X - 8
+	}
+	folder = image.Rect(right-buttonWidth, 3, right, int(appChromeHeight)-3)
 	return
 }
 

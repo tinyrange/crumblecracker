@@ -129,7 +129,8 @@ func TestToolbarOpensConfiguredSharedFolder(t *testing.T) {
 			v.settings.SharedFolder = t.TempDir()
 			var opened string
 			openSharedFolder = func(path string) error { opened = path; return nil }
-			folder, _ := toolbarActionBounds(v.chromeInsets, v.mouseCaptureAvailable())
+			backingWidth, _ := v.window.BackingSize()
+			folder, _ := toolbarActionBounds(float32(backingWidth)/normalizedDisplayScale(v.window.Scale()), v.chromeInsets, v.mouseCaptureAvailable(), v.cvmfsAvailable)
 			event := window.InputEvent{Type: window.InputEventMouseDown, Button: window.ButtonLeft, MouseX: float32(folder.Min.X+2) * 2, MouseY: float32(folder.Min.Y+2) * 2}
 			if !v.handleChromeInput(event) || opened != v.settings.SharedFolder || len(s.pointers) != 0 {
 				t.Fatalf("folder routing: %q", opened)

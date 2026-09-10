@@ -2357,7 +2357,7 @@ func (v *displayViewer) drawAppChrome(backingWidth, backingHeight int) {
 				float32(statusBounds.Dx()-16)*fraction, 2, uiPrimary)
 		}
 	}
-	folderBounds, captureBounds := toolbarActionBounds(v.chromeInsets, v.mouseCaptureAvailable())
+	folderBounds, captureBounds := toolbarActionBounds(width, v.chromeInsets, v.mouseCaptureAvailable(), v.cvmfsAvailable)
 	v.drawRoundedRect(backingWidth, backingHeight, scale, folderBounds, 4, uiSurfaceRaised)
 	if !captureBounds.Empty() {
 		v.drawRoundedRect(backingWidth, backingHeight, scale, captureBounds, 4, uiSurfaceRaised)
@@ -2379,21 +2379,29 @@ func (v *displayViewer) drawAppChrome(backingWidth, backingHeight int) {
 	}
 	// Draw title-bar text after all chrome shapes so it remains on top.
 	v.text.BeginDraw()
-	v.drawCenteredTextBold("Open shared folder", folderBounds, 12, uiText)
-	titleLeft := folderBounds.Max.X + 8
+	folderLabel := "Open shared folder"
+	if folderBounds.Dx() < 140 {
+		folderLabel = "Open folder"
+	}
+	v.drawCenteredTextBold(folderLabel, folderBounds, 12, uiText)
+	titleLeft := int(v.chromeInsets.Left) + 8
+	titleRight := folderBounds.Min.X - 8
 	if !captureBounds.Empty() {
 		captureLabel := "Capture mouse"
 		if v.mouseCaptured {
 			captureLabel = "Release: Ctrl + Alt"
+			if captureBounds.Dx() < 140 {
+				captureLabel = "Release mouse"
+			}
 		}
 		v.drawCenteredTextBold(captureLabel, captureBounds, 12, uiText)
-		titleLeft = captureBounds.Max.X + 8
 	}
-	titleRight := int(width-v.chromeInsets.Right) - 8
 	if v.cvmfsAvailable {
-		titleRight = statusBounds.Min.X - 8
 		v.drawCenteredTextBold(fitStartupText(label, float32(statusBounds.Dx()-24), 13), statusBounds, 13, statusColor)
 	}
+	// Reserve equal space on both sides so the title stays at the window center.
+	titleMargin := max(titleLeft, int(width)-titleRight)
+	titleLeft, titleRight = titleMargin, int(width)-titleMargin
 	if titleRight-titleLeft > 120 {
 		v.drawCenteredTextBold(productName(), image.Rect(titleLeft, 0, titleRight, int(appChromeHeight)), 13, uiText)
 	}
@@ -2977,7 +2985,7 @@ func (v *displayViewer) handleChromeInput(event window.InputEvent) bool {
 			return true
 		}
 		if event.Type == window.InputEventMouseDown && event.Button == window.ButtonLeft {
-			folder, capture := toolbarActionBounds(v.chromeInsets, v.mouseCaptureAvailable())
+			folder, capture := toolbarActionBounds(width, v.chromeInsets, v.mouseCaptureAvailable(), v.cvmfsAvailable)
 			if point.In(folder) {
 				v.toolbarError = ""
 				if err := openSharedFolder(v.settings.SharedFolder); err != nil {
