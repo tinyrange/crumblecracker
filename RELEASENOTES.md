@@ -1,4 +1,4 @@
-# CrumbleCracker v0.10.0
+# CrumbleCracker v0.10.1
 
 This release adds a headless NeurodeskAppX backend, improves SquadVM graphics and
 mouse control on macOS, and adds native Linux ARM64 downloads for both apps.
@@ -11,12 +11,15 @@ mouse control on macOS, and adds native Linux ARM64 downloads for both apps.
   VM startup, desktop window creation, and graceful shutdown.
 - Pull progress identifies the current downloads and reports bytes, download
   rates, and estimated time remaining, including kernel preparation.
-- See the [headless API specification](https://github.com/tinyrange/crumblecracker/blob/v0.10.0/docs/headless.md)
+- See the [headless API specification](https://github.com/tinyrange/crumblecracker/blob/v0.10.1/docs/headless.md)
   for request and response formats and lifecycle behavior. The existing
   Neurodesk desktop image remains compatible; no image update is required for
   the headless API.
 
 ## Desktop improvements
+
+- Fix an intermittent Windows single-CPU VM stall caused by a queued device
+  interrupt missing its wakeup while the virtual CPU enters the hypervisor.
 
 - SquadVM's updated image enables experimental OpenGL acceleration for the
   normal desktop user on Apple Silicon macOS and includes the gedit editor.
@@ -38,8 +41,11 @@ macOS downloads are signed and notarized.
 Close the app before replacing it. Preserve its settings, shared folders, and
 persistent home data. Existing VM names, homes, and data locations are unchanged.
 Update the SquadVM desktop image to receive its GPU permissions and editor fixes.
-The tested image is also available as `ghcr.io/tinyrange/squadvm:v0.10.0` and
-`ghcr.io/tinyrange/squadvm:v0.10.0-estargz`.
+The tested image is also available as `ghcr.io/tinyrange/squadvm:v0.10.1` and
+`ghcr.io/tinyrange/squadvm:v0.10.1-estargz`.
 
 Download from the [CrumbleCracker website](https://tinyrange.github.io/crumblecracker/)
 and verify the original download filenames against `checksums.txt` below.
+
+Version v0.10.0 was withheld after release validation found the Windows wakeup
+race. v0.10.1 includes that fix and the features described above.
