@@ -30,16 +30,22 @@ env:
 jobs:
   build-unix-windows:
     name: Build ${{ matrix.goos }} ${{ matrix.goarch }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - goos: linux
             goarch: amd64
+            runner: ubuntu-24.04
+            build_desktops: true
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-24.04-arm
             build_desktops: true
           - goos: windows
             goarch: amd64
+            runner: ubuntu-24.04
             ext: .exe
             build_desktops: true
     steps:
@@ -89,19 +95,23 @@ jobs:
           fi
 
       - name: Verify embedded guest init payloads
-        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        if: matrix.goos == 'linux'
         run: |
           set -euo pipefail
           go test ./internal/core/guestinit
 
       - name: Smoke-test native Linux payload
-        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        if: matrix.goos == 'linux'
         run: |
           set -euo pipefail
-          app_name="NeurodeskAppX_${RELEASE_VERSION}_linux_amd64"
+          app_name="NeurodeskAppX_${RELEASE_VERSION}_linux_${{ matrix.goarch }}"
           "dist/${app_name}" --help 2>&1 | grep -F "Usage of NeurodeskAppX"
-          squadvm_name="SquadVM_${RELEASE_VERSION}_linux_amd64"
+          squadvm_name="SquadVM_${RELEASE_VERSION}_linux_${{ matrix.goarch }}"
           "dist/${squadvm_name}" --help 2>&1 | grep -F "Usage of SquadVM"
+
+      - name: Smoke-test packaged Linux backend
+        if: matrix.goos == 'linux'
+        run: python3 tools/release-smoke.py "dist/NeurodeskAppX_${RELEASE_VERSION}_linux_${{ matrix.goarch }}"
 
       - name: Verify Windows desktop subsystem
         if: matrix.goos == 'windows' && matrix.goarch == 'amd64'
@@ -126,6 +136,39 @@ jobs:
             dist/NeurodeskAppX_${{ env.RELEASE_VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
             dist/SquadVM_${{ env.RELEASE_VERSION }}_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.ext }}
           if-no-files-found: error
+
+  smoke-windows:
+    name: Smoke-test packaged Windows apps
+    needs: build-unix-windows
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: crumblecracker-windows-amd64
+          path: dist
+      - name: Check desktop entry points
+        shell: pwsh
+        run: |
+          foreach ($product in @('NeurodeskAppX', 'SquadVM')) {
+            $binary = "dist/${product}_${env:RELEASE_VERSION}_windows_amd64.exe"
+            $process = Start-Process -FilePath $binary -ArgumentList '--help' -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "$product help failed" }
+          }
+      - name: Check authenticated backend lifecycle
+        shell: bash
+        run: python tools/release-smoke.py "dist/NeurodeskAppX_${RELEASE_VERSION}_windows_amd64.exe"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Check Windows guest execution and non-root shared writes
+        shell: bash
+        run: |
+          set -euo pipefail
+          go run ./internal/core/cmd/build-guestinit
+          go run ./tools/smoke -cache-dir "$RUNNER_TEMP/release-vm-cache" -storage "$RUNNER_TEMP/release-vm-share" -image testdata/alpine.simg
 
   build-macos:
     name: Build signed macOS ARM64
@@ -372,9 +415,12 @@ jobs:
             dist/SquadVM_${{ env.RELEASE_VERSION }}_darwin_arm64.zip
           if-no-files-found: error
 
+      - name: Smoke-test packaged macOS backend
+        run: python3 tools/release-smoke.py dist/NeurodeskAppX.app/Contents/MacOS/NeurodeskAppX
+
   publish:
     name: Publish GitHub Release
-    needs: [build-unix-windows, build-macos]
+    needs: [build-unix-windows, build-macos, smoke-windows]
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout release notes

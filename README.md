@@ -27,7 +27,7 @@ go run ./tools/build.go
 This builds `build/SquadVM` and `build/NeurodeskAppX` (with `.exe` on Windows),
 including Linux guest init payloads. macOS development binaries are ad-hoc signed
 with the hypervisor entitlement. Supported desktop hosts are Apple Silicon macOS,
-Linux amd64, and Windows amd64. Linux requires KVM; Windows requires Windows
+Linux amd64/arm64, and Windows amd64. Linux requires KVM; Windows requires Windows
 Hypervisor Platform.
 
 For isolated development, pass `-cache-dir` and `-storage` pointing to development
@@ -44,7 +44,7 @@ parameters, native Glass windows, and graceful shutdown.
 ## Checks and releases
 
 Commit CI runs focused product/runtime tests, native Darwin GPU tests, and builds
-for the three supported hosts. It does not download guest images or boot VMs.
+for all four supported platform and architecture combinations. It does not download guest images or boot VMs.
 Image publishing and signed/notarized desktop releases are explicit workflows.
 Release signing credentials must be configured in the destination repository.
 

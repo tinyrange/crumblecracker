@@ -1,35 +1,45 @@
-# CrumbleCracker v0.9.0
+# CrumbleCracker v0.10.0
 
-NeurodeskAppX and SquadVM now use an independent, reduced Linux runtime that
-runs inside each app. CrumbleCracker is the new name of the former vmsh
-repository. This release contains the two desktop apps; the experimental vmsh
-shell and daemon now live in [cc](https://github.com/tinyrange/cc).
+This release adds a headless NeurodeskAppX backend, improves SquadVM graphics and
+mouse control on macOS, and adds native Linux ARM64 downloads for both apps.
+
+## NeurodeskAppX integration
+
+- `--headless` starts an authenticated HTTP API without opening a window. It
+  reports its loopback address and secure token on stdout.
+- The API supports virtualization checks, image and kernel pulls, configurable
+  VM startup, desktop window creation, and graceful shutdown.
+- Pull progress identifies the current downloads and reports bytes, download
+  rates, and estimated time remaining, including kernel preparation.
+- See the [headless API specification](https://github.com/tinyrange/crumblecracker/blob/v0.10.0/docs/headless.md)
+  for request and response formats and lifecycle behavior. The existing
+  Neurodesk desktop image remains compatible; no image update is required for
+  the headless API.
 
 ## Desktop improvements
 
-- Sharper startup, settings, and notification text on high-density displays,
-  with improved startup spacing and panel widths.
-- Experimental OpenGL acceleration on Apple Silicon macOS. Enable
-  **Experimental GPU acceleration** under **Advanced** before starting.
-  Update the desktop image as well as the app; container acceleration applies
-  only to supported application versions. This does not provide CUDA support.
-  Turn the option off and restart if an application renders incorrectly.
-- Default VM names are `squadvm` and `neurodesk`.
+- SquadVM's updated image enables experimental OpenGL acceleration for the
+  normal desktop user on Apple Silicon macOS and includes the gedit editor.
+  Enable **Experimental GPU acceleration** in Advanced settings before starting.
+- Relative mouse input improves games such as Cube2. Moving through a display
+  edge releases the pointer to the host; the toolbar can force mouse capture
+  when a game needs continuous movement.
+- Both apps have consistently sized controls on the right of the top bar,
+  including a button to open the configured shared folder on the host.
+- Windows shared-folder permissions allow guest users other than root to write
+  files. Windows clipboard handling is also improved.
 
-## Upgrading
+## Downloads and upgrading
 
-Download the app for your platform from the
-[CrumbleCracker downloads page](https://tinyrange.github.io/crumblecracker/).
-Close the running app before replacing it. Keep its data folders when upgrading.
+Both apps are available for macOS Apple Silicon, Windows x64, Linux x64, and
+Linux ARM64. Linux requires KVM; Windows requires Windows Hypervisor Platform.
+macOS downloads are signed and notarized.
 
-Existing settings, shared folders, application data locations, and macOS bundle
-identities are preserved. NeurodeskAppX reuses an existing `ndappx` persistent
-home when no `neurodesk` home exists. It does not move or delete either home.
-If both exist, the `neurodesk` home remains selected; use `--home ndappx` to
-open the older home explicitly. Custom `--name` and `--home` selections are
-unchanged.
+Close the app before replacing it. Preserve its settings, shared folders, and
+persistent home data. Existing VM names, homes, and data locations are unchanged.
+Update the SquadVM desktop image to receive its GPU permissions and editor fixes.
+The tested image is also available as `ghcr.io/tinyrange/squadvm:v0.10.0` and
+`ghcr.io/tinyrange/squadvm:v0.10.0-estargz`.
 
-Older desktop releases can still check for updates through GitHub's redirect
-from `tinyrange/vmsh`. Updates open the app download in your browser; replace
-the app manually. Keep the `NeurodeskAppX` and `SquadVM` download filenames when
-checking release checksums. macOS downloads are signed and notarized.
+Download from the [CrumbleCracker website](https://tinyrange.github.io/crumblecracker/)
+and verify the original download filenames against `checksums.txt` below.

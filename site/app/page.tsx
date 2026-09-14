@@ -65,17 +65,18 @@ function productDownloads(product: Product["key"]): Download[] {
 
 function DownloadCard({ product }: { product: Product }) {
   const downloads = useMemo(() => productDownloads(product.key), [product.key]);
-  const [platform, setPlatform] = useState<Platform>("macOS");
+  const [selectedName, setSelectedName] = useState(
+    downloads.find((download) => download.platform === "macOS")?.name,
+  );
 
   useEffect(() => {
     const detected = detectPlatform();
-    if (downloads.some((download) => download.platform === detected)) {
-      setPlatform(detected);
-    }
+    const match = downloads.find((download) => download.platform === detected);
+    if (match) setSelectedName(match.name);
   }, [downloads]);
 
   const selected =
-    downloads.find((download) => download.platform === platform) ?? downloads[0];
+    downloads.find((download) => download.name === selectedName) ?? downloads[0];
 
   return (
     <article className={`product-card ${product.accent}`}>
@@ -95,12 +96,16 @@ function DownloadCard({ product }: { product: Product }) {
         <div className="platform-switcher" aria-label={`${product.name} platform`}>
           {downloads.map((download) => (
             <button
-              className={download.platform === platform ? "active" : ""}
+              className={download.name === selected.name ? "active" : ""}
               key={download.name}
-              onClick={() => setPlatform(download.platform)}
+              onClick={() => setSelectedName(download.name)}
+              aria-pressed={download.name === selected.name}
               type="button"
             >
               {download.platform}
+              {downloads.filter((asset) => asset.platform === download.platform).length > 1
+                ? ` ${download.arch}`
+                : ""}
             </button>
           ))}
         </div>

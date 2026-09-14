@@ -50,8 +50,9 @@ func check(cache, storage, source string) (retErr error) {
 	if err := api.PullImageStreamContext(ctx, "smoke", client.PullImageRequest{Source: source}, nil); err != nil {
 		return err
 	}
-	request := client.CreateInstanceRequest{Image: "smoke", MemoryMB: 1024, CPUs: 1, Network: &client.NetworkConfig{Enabled: true, AllowInternet: true}, Shares: []client.ShareMount{{Source: storage, Mount: "/shared", Writable: true}}}
+	request := client.CreateInstanceRequest{Image: "smoke", MemoryMB: 1024, CPUs: 1, Network: &client.NetworkConfig{Enabled: true, AllowInternet: true}, Shares: []client.ShareMount{{Source: storage, Mount: "/shared", Writable: true, MapOwner: true, OwnerUID: 65534, OwnerGID: 65534}}}
 	for pass := 0; pass < 2; pass++ {
+		fmt.Printf("Booting release smoke guest, pass %d\n", pass+1)
 		state, err := api.CreateInstanceStreamWithIDContext(ctx, "product-smoke", request, nil)
 		if err != nil {
 			return err
@@ -59,11 +60,11 @@ func check(cache, storage, source string) (retErr error) {
 		if state.Status != "running" {
 			return fmt.Errorf("boot status: %s", state.Status)
 		}
-		script := "printf 'persisted\\n' > /shared/product-smoke.txt"
+		script := "test $(id -u) = 65534 && printf 'persisted\\n' > /shared/product-smoke.txt"
 		if pass == 1 {
 			script = "cat /shared/product-smoke.txt"
 		}
-		response, err := api.RunInContext(ctx, "product-smoke", client.RunRequest{Command: []string{"/bin/sh", "-c", script}, TimeoutSeconds: 10})
+		response, err := api.RunInContext(ctx, "product-smoke", client.RunRequest{Command: []string{"/bin/sh", "-c", script}, User: "65534", TimeoutSeconds: 60})
 		if err != nil {
 			return err
 		}
@@ -85,7 +86,7 @@ func check(cache, storage, source string) (retErr error) {
 			if !errors.Is(deadlineErr, context.DeadlineExceeded) {
 				return fmt.Errorf("guest command deadline: %v", deadlineErr)
 			}
-			response, err = api.RunInContext(ctx, "product-smoke", client.RunRequest{Command: []string{"/bin/sh", "-c", "exit 7"}, TimeoutSeconds: 10})
+			response, err = api.RunInContext(ctx, "product-smoke", client.RunRequest{Command: []string{"/bin/sh", "-c", "exit 7"}, TimeoutSeconds: 60})
 			if err != nil {
 				return err
 			}
@@ -97,6 +98,6 @@ func check(cache, storage, source string) (retErr error) {
 			return err
 		}
 	}
-	fmt.Println("PASS: boot, repeated guest commands, deadline, exit status, shared writes, shutdown, and restart")
+	fmt.Println("PASS: boot, repeated guest commands, deadline, exit status, non-root shared writes, shutdown, and restart")
 	return nil
 }

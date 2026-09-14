@@ -1,0 +1,81 @@
+name: Promote tested SquadVM image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version tag for the tested image (for example v0.10.0)
+        required: true
+        type: string
+      image_digest:
+        description: Tested multi-architecture regular image digest (sha256)
+        required: true
+        type: string
+      estargz_digest:
+        description: Tested multi-architecture eStargz image digest (sha256)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: squadvm-image-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/squadvm
+      VERSION: ${{ inputs.version }}
+      IMAGE_DIGEST: ${{ inputs.image_digest }}
+      ESTARGZ_DIGEST: ${{ inputs.estargz_digest }}
+    steps:
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          [[ "$ESTARGZ_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install registry tool
+        run: go install github.com/google/go-containerregistry/cmd/crane@v0.21.8
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate both source manifests before promotion
+        run: |
+          set -euo pipefail
+          for digest in "$IMAGE_DIGEST" "$ESTARGZ_DIGEST"; do
+            crane manifest "$IMAGE@$digest" | jq -e '
+              [.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'
+          done
+          for suffix in '' '-estargz'; do
+            expected="$IMAGE_DIGEST"
+            if [[ -n "$suffix" ]]; then expected="$ESTARGZ_DIGEST"; fi
+            if existing="$(crane digest "$IMAGE:$VERSION$suffix" 2>/dev/null)"; then
+              test "$existing" = "$expected"
+            fi
+          done
+      - name: Promote manifests without rebuilding or copying layers
+        run: |
+          set -euo pipefail
+          for suffix in '' '-estargz'; do
+            digest="$IMAGE_DIGEST"
+            if [[ -n "$suffix" ]]; then digest="$ESTARGZ_DIGEST"; fi
+            for tag in "$VERSION$suffix" "edge$suffix" "latest$suffix"; do
+              crane tag "$IMAGE@$digest" "$tag"
+              test "$(crane digest "$IMAGE:$tag")" = "$digest"
+              printf '%s:%s -> %s\n' "$IMAGE" "$tag" "$digest" >> "$GITHUB_STEP_SUMMARY"
+            done
+          done

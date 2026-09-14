@@ -105,3 +105,10 @@ tunnel.
 The production publisher should retain the base-image digest in the Dockerfile,
 tag SquadVM releases immutably, and create amd64 and arm64 images from the same
 recipe.
+
+To release an already tested image, run **Promote tested SquadVM image** with
+the regular and eStargz multi-architecture index digests and a version such as
+`v0.10.0`. It verifies both Linux architectures and preserves the source digests
+while updating the versioned, `edge`, and `latest` tags (including `-estargz`).
+It does not rebuild the image or copy its layers. A version tag that already
+points to another digest is rejected.
