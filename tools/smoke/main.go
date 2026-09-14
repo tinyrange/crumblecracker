@@ -19,15 +19,19 @@ func main() {
 	cache := flag.String("cache-dir", "", "isolated development cache directory (required)")
 	storage := flag.String("storage", "", "isolated shared directory (required)")
 	source := flag.String("image", "", "Linux image source containing /bin/sh (required)")
+	passes := flag.Int("passes", 2, "number of guest boots, at least two")
 	flag.Parse()
-	if err := check(*cache, *storage, *source); err != nil {
+	if err := check(*cache, *storage, *source, *passes); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
-func check(cache, storage, source string) (retErr error) {
+func check(cache, storage, source string, passes int) (retErr error) {
 	if cache == "" || storage == "" || source == "" {
 		return errors.New("provide -cache-dir, -storage, and -image")
+	}
+	if passes < 2 {
+		return errors.New("provide at least two passes to verify restart")
 	}
 	storage, err := filepath.Abs(storage)
 	if err != nil {
@@ -51,7 +55,7 @@ func check(cache, storage, source string) (retErr error) {
 		return err
 	}
 	request := client.CreateInstanceRequest{Image: "smoke", MemoryMB: 1024, CPUs: 1, Network: &client.NetworkConfig{Enabled: true, AllowInternet: true}, Shares: []client.ShareMount{{Source: storage, Mount: "/shared", Writable: true, MapOwner: true, OwnerUID: 65534, OwnerGID: 65534}}}
-	for pass := 0; pass < 2; pass++ {
+	for pass := 0; pass < passes; pass++ {
 		fmt.Printf("Booting release smoke guest, pass %d\n", pass+1)
 		state, err := api.CreateInstanceStreamWithIDContext(ctx, "product-smoke", request, nil)
 		if err != nil {
@@ -61,7 +65,7 @@ func check(cache, storage, source string) (retErr error) {
 			return fmt.Errorf("boot status: %s", state.Status)
 		}
 		script := "test $(id -u) = 65534 && printf 'persisted\\n' > /shared/product-smoke.txt"
-		if pass == 1 {
+		if pass > 0 {
 			script = "cat /shared/product-smoke.txt"
 		}
 		response, err := api.RunInContext(ctx, "product-smoke", client.RunRequest{Command: []string{"/bin/sh", "-c", script}, User: "65534", TimeoutSeconds: 60})
@@ -71,7 +75,7 @@ func check(cache, storage, source string) (retErr error) {
 		if response.ExitCode != 0 {
 			return fmt.Errorf("guest command exited %d: %s", response.ExitCode, response.Output)
 		}
-		if pass == 1 && response.Output != "persisted" {
+		if pass > 0 && response.Output != "persisted" {
 			return fmt.Errorf("restart lost shared contents: %q", response.Output)
 		}
 		if pass == 0 {

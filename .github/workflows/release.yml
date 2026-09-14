@@ -168,7 +168,8 @@ jobs:
         run: |
           set -euo pipefail
           go run ./internal/core/cmd/build-guestinit
-          go run ./tools/smoke -cache-dir "$RUNNER_TEMP/release-vm-cache" -storage "$RUNNER_TEMP/release-vm-share" -image testdata/alpine.simg
+          CC_TEST_WINDOWS_WHP_WAKEUP=1 go test ./internal/core/hv/whp -run TestQueuedDeviceInterruptWakesLateStartingCPU -count=1 -timeout=30s
+          go run ./tools/smoke -cache-dir "$RUNNER_TEMP/release-vm-cache" -storage "$RUNNER_TEMP/release-vm-share" -image testdata/alpine.simg -passes 10
 
   build-macos:
     name: Build signed macOS ARM64

@@ -314,6 +314,8 @@ func runManagedExecVM(ctx context.Context, vm *VM, platform *bootPlatform, seria
 		}
 		return runManagedExecVMMulti(ctx, vm, platform, serialOut)
 	}
+	stopWakeups := startPendingIRQWakeups(vm, platform)
+	defer stopWakeups()
 	for step := 0; ; step++ {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("%w (%s)", err, platform.Summary())
@@ -367,6 +369,34 @@ func runManagedExecVM(ctx context.Context, vm *VM, platform *bootPlatform, seria
 		} else if exit.Reason == runVPExitReasonX64Halt && !flushed {
 			return fmt.Errorf("guest halted with pending irq blocked\nserial:\n%s\n%s", serialOut.String(), platform.Summary())
 		}
+	}
+}
+
+// A device can queue an interrupt between the run loop's pending-IRQ check and
+// WHvRunVirtualProcessor. Its immediate kick then sees no running vCPU (or
+// cancels before the native call starts), leaving a halted guest asleep. Retry
+// queued wakeups until the run loop has delivered them, including on one-vCPU VMs.
+func startPendingIRQWakeups(vm *VM, platform *bootPlatform) func() {
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				if index, ok := platform.queuedIRQVCPU(); ok {
+					vm.kickVCPUIfRunning(index)
+				}
+			}
+		}
+	}()
+	return func() {
+		close(done)
+		<-stopped
 	}
 }
 
@@ -428,18 +458,14 @@ func runManagedExecVMMulti(ctx context.Context, vm *VM, platform *bootPlatform, 
 		wg.Wait()
 	}()
 
-	wakeTicker := time.NewTicker(time.Millisecond)
-	defer wakeTicker.Stop()
+	stopWakeups := startPendingIRQWakeups(vm, platform)
+	defer stopWakeups()
 	for {
 		select {
 		case err := <-errCh:
 			return err
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-wakeTicker.C:
-			if index, ok := platform.queuedIRQVCPU(); ok {
-				vm.kickVCPUIfRunning(index)
-			}
 		}
 	}
 }

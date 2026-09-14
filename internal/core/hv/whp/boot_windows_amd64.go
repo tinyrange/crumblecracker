@@ -241,6 +241,8 @@ func bootToConditionWithDevicesAndCPUs(ctx context.Context, kernel []byte, initr
 		return bootToConditionMulti(ctx, vm, platform, out, settleAfterDone, done)
 	}
 
+	stopWakeups := startPendingIRQWakeups(vm, platform)
+	defer stopWakeups()
 	doneSeen := false
 	var settleDeadline time.Time
 	checkDone := func() bool {
