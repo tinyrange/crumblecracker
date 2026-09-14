@@ -278,7 +278,8 @@ nav .github-link {
 
 .platform-switcher {
   display: flex;
-  gap: 21px;
+  flex-wrap: wrap;
+  gap: 10px 21px;
   margin: 19px 0 12px;
 }
 
