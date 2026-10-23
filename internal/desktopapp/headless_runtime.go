@@ -33,6 +33,7 @@ type headlessNativeRequest struct {
 	done         chan error
 }
 type headlessRuntimeDriver struct {
+	jupyter       map[string]headlessJupyterResult
 	sharedFolders map[string]string
 	mu            sync.Mutex
 	pullGate      chan struct{}
@@ -113,7 +114,7 @@ func (d *headlessRuntimeDriver) cachedResolution(reference string) (headlessPrep
 }
 
 func (d *headlessRuntimeDriver) Pull(ctx context.Context, req headlessPullRequest, report func(headlessTransfer)) (headlessImage, error) {
-	if err := d.pullAPI.ValidateRegistryReference(req.Reference); err != nil {
+	if err := d.pullAPI.ValidateRegistryReference(req.Reference); err != nil && !strings.HasPrefix(req.Reference, "docker-archive:") {
 		return headlessImage{}, headlessFailure("invalid_request", "Invalid OCI reference")
 	}
 	select {
@@ -176,6 +177,13 @@ func (d *headlessRuntimeDriver) Pull(ctx context.Context, req headlessPullReques
 	}()
 	go func() {
 		defer wg.Done()
+		if strings.HasPrefix(req.Reference, "docker-archive:") {
+			imageResult, localName, imageErr = d.importArchive(ctx, req, report)
+			if imageErr != nil {
+				cancel()
+			}
+			return
+		}
 		d.mu.Lock()
 		previousID := d.references[req.Reference]
 		previous, exists := d.prepared[previousID]
@@ -368,8 +376,15 @@ func (d *headlessRuntimeDriver) Start(ctx context.Context, id string, req headle
 	for _, k := range keys {
 		env = append(env, k+"="+req.Env[k])
 	}
-	request := client.CreateInstanceRequest{Image: prepared.name, DefaultUser: req.User, InitSystem: "systemd", Shares: shares, PersistentMounts: homes, Network: &client.NetworkConfig{Enabled: req.Network.Enabled, AllowInternet: req.Network.Internet}, Display: &client.DisplayConfig{Width: uint32(req.Display.Width), Height: uint32(req.Display.Height)}, KernelModules: appKernelModules(runtimeArchitecture()), Env: env, MemoryMB: req.Memory, CPUs: req.CPUs, AMD64Emulation: d.config.AMD64Emulation, TimeoutSeconds: float64(req.BootTimeout)}
+	network := &client.NetworkConfig{Enabled: req.Network.Enabled, AllowInternet: req.Network.Internet}
+	if req.Jupyter != nil {
+		network.PortForwards = []client.PortForward{{Protocol: "tcp", HostAddr: "127.0.0.1", HostPort: req.Jupyter.HostPort, GuestPort: 8888}}
+	}
+	request := client.CreateInstanceRequest{Image: prepared.name, DefaultUser: req.User, InitSystem: "systemd", Shares: shares, PersistentMounts: homes, Network: network, Display: &client.DisplayConfig{Width: uint32(req.Display.Width), Height: uint32(req.Display.Height), Accelerated3D: req.Display.GPU}, KernelModules: appKernelModules(runtimeArchitecture()), Env: env, MemoryMB: req.Memory, CPUs: req.CPUs, AMD64Emulation: d.config.AMD64Emulation, TimeoutSeconds: float64(req.BootTimeout)}
 	_, err = api.CreatePreparedInstance(ctx, id, request, prepared.image.Kernel.Version)
+	if err == nil && req.Jupyter != nil {
+		err = d.startJupyter(ctx, id, req.Jupyter.HostPort)
+	}
 	return err
 }
 func (d *headlessRuntimeDriver) machine(id string) *appruntime.Runtime {
@@ -458,6 +473,7 @@ func (d *headlessRuntimeDriver) Stop(ctx context.Context, id string) error {
 	d.mu.Lock()
 	delete(d.machines, id)
 	delete(d.sharedFolders, id)
+	delete(d.jupyter, id)
 	d.mu.Unlock()
 	return nil
 }

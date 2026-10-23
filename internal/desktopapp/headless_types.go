@@ -74,20 +74,28 @@ type headlessCVMFS struct {
 	Mirror     string `json:"mirror,omitempty"`
 	CacheLimit int64  `json:"cache_limit_bytes,omitempty"`
 }
+type headlessJupyterRequest struct {
+	HostPort int `json:"host_port"`
+}
+type headlessJupyterResult struct {
+	URL   string `json:"url"`
+	Token string `json:"token"`
+}
 type headlessVMRequest struct {
-	ImageID     string            `json:"image_id"`
-	Name        string            `json:"name"`
-	Memory      uint64            `json:"memory_mib"`
-	CPUs        int               `json:"cpus"`
-	User        string            `json:"user"`
-	Home        headlessHome      `json:"home"`
-	Storage     headlessStorage   `json:"storage"`
-	Shares      []headlessShare   `json:"shares"`
-	Network     headlessNetwork   `json:"network"`
-	Display     headlessDisplay   `json:"display"`
-	CVMFS       headlessCVMFS     `json:"cvmfs"`
-	BootTimeout int               `json:"boot_timeout_seconds"`
-	Env         map[string]string `json:"env"`
+	Jupyter     *headlessJupyterRequest `json:"jupyter,omitempty"`
+	ImageID     string                  `json:"image_id"`
+	Name        string                  `json:"name"`
+	Memory      uint64                  `json:"memory_mib"`
+	CPUs        int                     `json:"cpus"`
+	User        string                  `json:"user"`
+	Home        headlessHome            `json:"home"`
+	Storage     headlessStorage         `json:"storage"`
+	Shares      []headlessShare         `json:"shares"`
+	Network     headlessNetwork         `json:"network"`
+	Display     headlessDisplay         `json:"display"`
+	CVMFS       headlessCVMFS           `json:"cvmfs"`
+	BootTimeout int                     `json:"boot_timeout_seconds"`
+	Env         map[string]string       `json:"env"`
 }
 type headlessGlassRequest struct {
 	Title   string `json:"title"`
@@ -205,13 +213,23 @@ func (r *headlessVMRequest) validate(config Config) error {
 	if !headlessSize(r.Display.Width, r.Display.Height) {
 		return invalid("display")
 	}
-	// The existing accelerated renderer needs a presentation context during boot.
-	// Advertise this limitation rather than creating a hidden window.
-	if r.Display.GPU {
-		return headlessFailure("unsupported_configuration", "GPU acceleration is unavailable for windowless boot")
+	if r.Display.GPU && !headlessGPUSupported() {
+		return headlessFailure("unsupported_configuration", "Windowless GPU acceleration requires Apple Silicon")
+	}
+	if r.Jupyter != nil && (config.Kind != "ndappx" || !r.Network.Enabled || r.User != "jovyan" || r.Jupyter.HostPort < 1024 || r.Jupyter.HostPort > 65535) {
+		return invalid("jupyter.host_port/user/network")
 	}
 	if r.BootTimeout < 1 || r.BootTimeout > 3600 {
 		return invalid("boot_timeout_seconds")
+	}
+	if config.Kind == "ndappx" {
+		if mode, supplied := r.Env["NEURODESKTOP_RUNTIME"]; supplied && mode != "glass" {
+			return headlessFailure("unsupported_configuration", "NeurodeskAppX requires env.NEURODESKTOP_RUNTIME=glass")
+		}
+		if r.Env == nil {
+			r.Env = make(map[string]string)
+		}
+		r.Env["NEURODESKTOP_RUNTIME"] = "glass"
 	}
 	for name, value := range r.Env {
 		if !headlessEnvName.MatchString(name) || strings.ContainsRune(value, 0) || strings.HasPrefix(name, "CCX3_") || strings.HasPrefix(name, "VMSH_") {

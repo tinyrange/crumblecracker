@@ -39,13 +39,21 @@ use a new key. IDs and replay/operation records are scoped to the child lifetime
 
 1. `GET /v1/info` and `GET /v1/virtualization`. A negative virtualization check is
    a successful HTTP response with `accessible:false` and a machine-readable reason.
-2. `POST /v1/images/pull` with an OCI tag or sha256 digest reference. Image and
+2. `POST /v1/images/pull` with an OCI tag/digest or `docker-archive:/absolute/path.tar`.
+   Local archives must contain one native Linux image and are snapshotted into
+   a SHA-256-addressed cache path before import. Their returned digest identifies
+   the entire archive, not an OCI manifest. No registry fallback occurs. Image and
    kernel preparation run concurrently, with kernel packages/modules prepared
    before success. `refresh` resolves a tag again; boot uses its immutable revision.
 3. Poll the returned `Location` (`GET /v1/operations/{operation_id}`) every 500 ms.
    A 202 acceptance is not completion. Wait for `succeeded`, `failed`, or `cancelled`.
 4. `POST /v1/vms` using the returned `image_id` and explicit saved session options.
    Wait for its operation to succeed. This boots guest control without Glass.
+   Include `"jupyter":{"host_port":18888}` to forward IPv4 loopback to guest
+   port 8888 and start authenticated Jupyter first. Requires `jovyan`, networking,
+   and an image with the shared `neurodesktop-prepare.service`. The operation
+   returns `jupyter:{url,token}` only after an authenticated `/api/status` probe.
+   Keep this token private and load its URL in the owning app session.
 5. `POST /v1/vms/{vm_id}/glass` starts the guest desktop and opens the executable's
    native window on the platform UI thread. Its operation succeeds after a desktop
    frame has actually been presented. It returns a native-window session, not a
@@ -113,9 +121,14 @@ both the image and kernel are ready. Polling recomputes rates even during stalls
 
 The initial implementation uses full layer preparation for new downloads and
 reuses cached indexed/enhanced layers. It does not claim that future CVMFS content
-has already been downloaded. GPU acceleration is currently advertised as false:
-the accelerated renderer requires a window share context during boot. Requesting
-it fails explicitly without creating a hidden window or silently downgrading.
+has already been downloaded. Windowless GPU acceleration is available on Apple
+Silicon: the renderer owns its offscreen hardware OpenGL context, and Glass uses
+framebuffer readback when no shared presentation context exists. Other platforms
+reject the request. This describes desktop rendering, not nested scientific GPU
+container support. Use authenticated `GET /v1/vms/{id}/diagnostics` for service
+and `glxinfo -B` evidence; software renderer output must not count as GPU acceptance.
+`GET /v1/vms/{id}/screenshot` returns a PNG of the guest framebuffer only after
+Glass has presented a frame. It is not a capture of unrelated host windows.
 
 ## Shutdown and failures
 
@@ -134,6 +147,26 @@ Stdin EOF or SIGINT/SIGTERM triggers bounded cleanup. On Windows use HTTP for
 normal shutdown; headless startup preserves inherited pipes instead of attaching
 the parent console. An orphan cleanup failure exits nonzero. Forced termination
 or host failure cannot guarantee guest-graceful persistence.
+
+## Standard Neurodesktop image (experimental)
+
+Images built from Neurodesktop's Glass-enabled sources can be used directly,
+without the derived `neurodesktop-glass` image. Supply the explicit candidate
+image reference when launching NeurodeskAppX. The existing default image is
+retained until native candidate acceptance is complete.
+
+NeurodeskAppX sets `NEURODESKTOP_RUNTIME=glass` in both GUI and headless modes.
+Headless requests that explicitly select another runtime are rejected. GUI and
+VNC sessions boot the transient headless target and explicitly start
+`neurodesktop-glass.service` after guest setup; headless API sessions still defer
+that service until the Glass request. Container/HPC startup is not selected.
+
+Use software rendering: upstream's initial Glass integration does not include
+the derived image's experimental GPU container support. Do not enable GPU
+acceleration for a plain-image acceptance run. Validate a locally built candidate
+with isolated cache, storage and home: boot, desktop frames, clipboard/resize,
+authenticated Jupyter, scientific commands, and shutdown/restart persistence.
+Unit tests do not establish native VM or display acceptance.
 
 ## Image and application releases
 
