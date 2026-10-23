@@ -13,6 +13,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -228,6 +229,8 @@ func headlessRoute(p string) (string, string) {
 		switch parts[3] {
 		case "glass", "stop":
 			return parts[3], "POST"
+		case "screenshot", "diagnostics":
+			return parts[3], "GET"
 		}
 	}
 	return "", ""
@@ -319,6 +322,10 @@ func headlessDecode(body []byte, v any) error {
 	return nil
 }
 func (s *headlessServer) read(w http.ResponseWriter, r *http.Request, route string) {
+	if route == "screenshot" || route == "diagnostics" {
+		s.desktopRead(w, r, route)
+		return
+	}
 	if route == "virt" {
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
@@ -333,7 +340,7 @@ func (s *headlessServer) read(w http.ResponseWriter, r *http.Request, route stri
 		if s.closing {
 			state = "shutting_down"
 		}
-		headlessJSON(w, 200, map[string]any{"protocol": "ndappx", "api_version": 1, "version": headlessBuildVersion(), "state": state, "platform": map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH}, "capabilities": map[string]any{"max_active_vms": 1, "native_glass": true, "gpu_acceleration": false}, "defaults": map[string]any{"image": s.config.DefaultImage, "memory_mib": s.defaults.Memory, "cpus": s.defaults.CPUs, "user": s.defaults.User, "home_mode": "persistent", "storage_path": s.defaults.Storage.HostPath}})
+		headlessJSON(w, 200, map[string]any{"protocol": "ndappx", "api_version": 1, "version": headlessBuildVersion(), "state": state, "platform": map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH}, "capabilities": map[string]any{"max_active_vms": 1, "native_glass": true, "gpu_acceleration": headlessGPUSupported(), "jupyter_first": true, "docker_archive": true}, "defaults": map[string]any{"image": s.config.DefaultImage, "memory_mib": s.defaults.Memory, "cpus": s.defaults.CPUs, "user": s.defaults.User, "home_mode": "persistent", "storage_path": s.defaults.Storage.HostPath}})
 	case "operation":
 		id := strings.TrimPrefix(r.URL.Path, "/v1/operations/")
 		op := s.operations[id]
@@ -421,11 +428,12 @@ func (s *headlessServer) mutate(w http.ResponseWriter, r *http.Request, route st
 			fail(err)
 			return
 		}
-		if req.Reference == "" || strings.ContainsAny(req.Reference, " \t\n\r?#") || strings.Contains(req.Reference, "://") || (req.Policy != "if_missing" && req.Policy != "refresh") || req.Timeout < 1 || req.Timeout > 86400 {
+		archive := strings.HasPrefix(req.Reference, "docker-archive:")
+		if req.Reference == "" || strings.ContainsAny(req.Reference, "\t\n\r?#") || (!archive && strings.Contains(req.Reference, " ")) || strings.Contains(req.Reference, "://") || (req.Policy != "if_missing" && req.Policy != "refresh") || req.Timeout < 1 || req.Timeout > 86400 {
 			fail(headlessFailure("invalid_request", "Invalid image pull request"))
 			return
 		}
-		if _, _, _, err := oci.ParseImageRef(req.Reference); err != nil {
+		if _, _, _, err := oci.ParseImageRef(req.Reference); (!archive && err != nil) || (archive && !filepath.IsAbs(strings.TrimPrefix(req.Reference, "docker-archive:"))) {
 			fail(headlessFailure("invalid_request", "Invalid OCI image reference"))
 			return
 		}
@@ -533,7 +541,15 @@ func (s *headlessServer) mutate(w http.ResponseWriter, r *http.Request, route st
 				}
 				vm.Active = nil
 			}
-			s.finish(op, map[string]string{"vm_id": id, "state": "running"}, err, "boot_failed")
+			result := map[string]any{"vm_id": id, "state": "running"}
+			if provider, ok := s.driver.(interface {
+				Jupyter(string) *headlessJupyterResult
+			}); ok && err == nil {
+				if notebook := provider.Jupyter(id); notebook != nil {
+					result["jupyter"] = notebook
+				}
+			}
+			s.finish(op, result, err, "boot_failed")
 		}()
 	case "glass", "stop":
 		parts := strings.Split(r.URL.Path, "/")

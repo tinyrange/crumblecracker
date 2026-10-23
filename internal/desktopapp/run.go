@@ -300,6 +300,11 @@ func Run(config Config, args []string) (retErr error) {
 		Dmesg:            *dmesg,
 		TimeoutSeconds:   bootTimeout.Seconds(),
 	}
+	if appConfig.Kind == "ndappx" {
+		// The standard image deliberately leaves Glass disabled at boot. Use
+		// the transient target, then activate its service after guest setup.
+		request.Env = append(request.Env, "CCX3_HEADLESS=1", "NEURODESKTOP_RUNTIME=glass")
+	}
 	if appConfig.Kind == "squadvm" && runtime.GOOS == "darwin" && !*vnc {
 		request.Env = append(request.Env, "CCX3_RELATIVE_POINTER=1")
 	}
@@ -538,6 +543,9 @@ func Run(config Config, args []string) (retErr error) {
 					return displayStarted{}, err
 				}
 			}
+			if err := startDesktopService(ctx, api, *name); err != nil {
+				return displayStarted{}, err
+			}
 			var session ccdisplay.Session
 			select {
 			case session = <-displayReady:
@@ -700,6 +708,9 @@ func Run(config Config, args []string) (retErr error) {
 				fmt.Fprintf(os.Stderr, "%s: %v\n", productName(), err)
 			}
 		}()
+	}
+	if err := startDesktopService(lifetimeContext, api, *name); err != nil {
+		return err
 	}
 	if state.Display.VNCAddress == "" {
 		return fmt.Errorf("VM started without a VNC endpoint")
@@ -865,6 +876,32 @@ func pulledImageName(source, architecture string) string {
 	}
 	sum := sha256.Sum256([]byte(source + "\x00" + architecture))
 	return fmt.Sprintf("%s/%s-%s-%x", appConfig.ImageNamespace, name, architecture, sum[:6])
+}
+
+// startDesktopService leaves other products' image-owned startup unchanged.
+// Neurodesktop's standard image installs Glass without enabling it by default.
+func startDesktopService(ctx context.Context, api desktopRuntime, name string) error {
+	if appConfig.Kind != "ndappx" {
+		return nil
+	}
+	exitCode := -1
+	err := api.RunStreamInContext(ctx, name, client.RunRequest{
+		Command:        []string{"systemctl", "start", "neurodesktop-glass.service"},
+		User:           "root",
+		TimeoutSeconds: 95,
+	}, func(event client.ExecEvent) error {
+		if event.Kind == "exit" {
+			exitCode = event.ExitCode
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("start Neurodesktop Glass service: %w", err)
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("start Neurodesktop Glass service: exit %d; image must include the Glass runtime", exitCode)
+	}
+	return nil
 }
 
 func waitForDesktop(ctx context.Context, api desktopRuntime, name string) error {
