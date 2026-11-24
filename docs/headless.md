@@ -121,12 +121,12 @@ both the image and kernel are ready. Polling recomputes rates even during stalls
 
 The initial implementation uses full layer preparation for new downloads and
 reuses cached indexed/enhanced layers. It does not claim that future CVMFS content
-has already been downloaded. Windowless GPU acceleration is available on Apple
-Silicon: the renderer owns its offscreen hardware OpenGL context, and Glass uses
-framebuffer readback when no shared presentation context exists. Other platforms
-reject the request. This describes desktop rendering, not nested scientific GPU
-container support. Use authenticated `GET /v1/vms/{id}/diagnostics` for service
-and `glxinfo -B` evidence; software renderer output must not count as GPU acceptance.
+has already been downloaded. Windowless desktop GPU acceleration is available
+on Apple Silicon and Linux/amd64. The renderer owns its offscreen hardware OpenGL
+context, and Glass presents pixels via framebuffer readback. Linux requires EGL,
+GBM, and an accessible DRM render node with a supported desktop OpenGL driver.
+Use authenticated `GET /v1/vms/{id}/diagnostics` for service and `glxinfo -B`
+output. For hardware acceptance, also verify the host OpenGL renderer identity.
 `GET /v1/vms/{id}/screenshot` returns a PNG of the guest framebuffer only after
 Glass has presented a frame. It is not a capture of unrelated host windows.
 

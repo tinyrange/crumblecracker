@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || (linux && amd64)
 
 package virgl
 
@@ -12,7 +12,7 @@ import (
 )
 
 func TestModernTextureFormatsRoundTripNativeStorage(t *testing.T) {
-	host := newDarwinTestHost(t)
+	host := newReplayTestHost(t)
 	defer host.close()
 
 	float32Bytes := func(values ...float32) []byte {
@@ -111,7 +111,7 @@ func TestModernTextureFormatsRoundTripNativeStorage(t *testing.T) {
 }
 
 func TestIntegerMultisampleFormatsUseLayeredNativeStorage(t *testing.T) {
-	host := newDarwinTestHost(t)
+	host := newReplayTestHost(t)
 	defer host.close()
 
 	formats := []uint32{
@@ -158,7 +158,7 @@ func TestIntegerMultisampleFormatsUseLayeredNativeStorage(t *testing.T) {
 }
 
 func TestSharedExponentTextureUploadsToSamplerNativeStorage(t *testing.T) {
-	host := newDarwinTestHost(t)
+	host := newReplayTestHost(t)
 	defer host.close()
 
 	description := virtio.GPUResource3D{
@@ -187,7 +187,7 @@ func TestSharedExponentTextureUploadsToSamplerNativeStorage(t *testing.T) {
 }
 
 func TestSharedExponent2DReadbackPreservesPackedSubrectangle(t *testing.T) {
-	host := newDarwinTestHost(t)
+	host := newReplayTestHost(t)
 	defer host.close()
 
 	description := virtio.GPUResource3D{
@@ -228,7 +228,7 @@ func TestSharedExponent2DReadbackPreservesPackedSubrectangle(t *testing.T) {
 }
 
 func TestDepth32FloatPreservesNativePrecision(t *testing.T) {
-	host := newDarwinTestHost(t)
+	host := newReplayTestHost(t)
 	defer host.close()
 
 	description := virtio.GPUResource3D{
@@ -258,7 +258,7 @@ func TestDepth32FloatPreservesNativePrecision(t *testing.T) {
 }
 
 func TestDepth24X8UsesGuestScaledIntegerRepresentation(t *testing.T) {
-	host := newDarwinTestHost(t)
+	host := newReplayTestHost(t)
 	defer host.close()
 
 	description := virtio.GPUResource3D{
@@ -305,7 +305,7 @@ func TestDepth24X8UsesGuestScaledIntegerRepresentation(t *testing.T) {
 }
 
 func TestDepth24Stencil8ReordersGuestPackedChannels(t *testing.T) {
-	host := newDarwinTestHost(t)
+	host := newReplayTestHost(t)
 	defer host.close()
 
 	description := virtio.GPUResource3D{
@@ -357,7 +357,7 @@ func TestDepth24Stencil8ReordersGuestPackedChannels(t *testing.T) {
 }
 
 func TestDepth32FloatStencil8RoundTripsNativeStorage(t *testing.T) {
-	host := newDarwinTestHost(t)
+	host := newReplayTestHost(t)
 	defer host.close()
 
 	description := virtio.GPUResource3D{
@@ -383,5 +383,69 @@ func TestDepth32FloatStencil8RoundTripsNativeStorage(t *testing.T) {
 	}
 	if string(readback.data) != string(want) {
 		t.Fatalf("depth32f-stencil8 round trip = %#x, want %#x", readback.data, want)
+	}
+}
+
+func TestDepthBlitConvertsPackedDepthToFloat(t *testing.T) {
+	host := newReplayTestHost(t)
+	defer host.close()
+
+	const contextID = 1
+	if err := host.createContext(contextID); err != nil {
+		t.Fatal(err)
+	}
+	source := virtio.GPUResource3D{
+		ID: 1, Target: 2, Format: virglFormatZ24UNormS8UInt,
+		Width: 2, Height: 2, Depth: 1, ArraySize: 1,
+	}
+	destination := source
+	destination.ID, destination.Format = 2, virglFormatZ32Float
+	for _, description := range []virtio.GPUResource3D{source, destination} {
+		if err := host.createResource(description); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	depths := [...]uint32{0x200000, 0x800000, 0xd00000, 0xffffff}
+	packed := make([]byte, 16)
+	for index, depth := range depths {
+		binary.LittleEndian.PutUint32(packed[index*4:], 0x5a000000|depth)
+	}
+	transfer := virtio.GPUTransfer3D{
+		ResourceID: source.ID, Stride: 8,
+		Box: virtio.GPUBox{Width: 2, Height: 2, Depth: 1},
+	}
+	if err := host.transferToHost(&resource{description: source, data: packed}, transfer); err != nil {
+		t.Fatal(err)
+	}
+
+	const depthMask = 0x10
+	if err := host.execute(contextID, []command{{Opcode: 16, Payload: []uint32{
+		depthMask, 0, 0,
+		destination.ID, 0, destination.Format, 0, 0, 0, 2, 2, 1,
+		source.ID, 0, source.Format, 0, 0, 0, 2, 2, 1,
+	}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.dispatch(func() error {
+		if code := host.gl.getError(); code != 0 {
+			return fmt.Errorf("depth blit GL error %#x", code)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	transfer.ResourceID = destination.ID
+	readback := &resource{description: destination, data: make([]byte, 16)}
+	if err := host.transferFromHost(readback, transfer); err != nil {
+		t.Fatal(err)
+	}
+	for index, depth := range depths {
+		got := math.Float32frombits(binary.LittleEndian.Uint32(readback.data[index*4:]))
+		want := float32(depth) / 0xffffff
+		if math.Abs(float64(got-want)) > 1e-6 {
+			t.Errorf("depth sample %d = %g, want %g", index, got, want)
+		}
 	}
 }

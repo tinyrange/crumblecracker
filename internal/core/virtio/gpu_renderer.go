@@ -74,8 +74,7 @@ type GPUNativeScanoutRenderer interface {
 
 // GPURenderer owns the host implementation of an advertised virtio-gpu 3D
 // command protocol. Calls are ordered exactly as they arrive on controlq.
-// Returning from a call means the command is complete for virtio fence
-// purposes.
+// Backends with asynchronous host work implement GPUFenceWaiter.
 type GPURenderer interface {
 	Capsets() []GPUCapset
 	CreateContext(id uint32, name string, contextInit uint32) error
@@ -90,4 +89,9 @@ type GPURenderer interface {
 	ReadScanout(resourceID uint32, rect image.Rectangle) ([]byte, int, error)
 	Reset()
 	Close() error
+}
+
+// GPUFenceWaiter synchronizes queued host work before a fenced control response.
+type GPUFenceWaiter interface {
+	WaitForFence() error
 }

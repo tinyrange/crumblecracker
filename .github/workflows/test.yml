@@ -21,6 +21,15 @@ jobs:
       - run: go run ./internal/core/cmd/build-guestinit
       - name: Test product behavior
         run: go test -short ./internal/desktopapp ./internal/runtime ./internal/ptyterm ./internal/hostcompat ./internal/core/virtio ./internal/core/virgl ./internal/core/oci ./internal/core/cmd/init ./internal/core/kernel/alpine ./internal/core/vm/mounts ./internal/core/netstack -count=1 -timeout 3m
+      - name: Replay VirGL with Mesa software rendering
+        env:
+          CGO_ENABLED: "0"
+          LIBGL_ALWAYS_SOFTWARE: "1"
+          VMSH_VIRGL_TEST: "1"
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y libegl1 libegl-mesa0 libgl1-mesa-dri
+          go test ./internal/core/virgl -run '^Test(ReplayOpenGLTriangle|ModernTextureFormatsRoundTripNativeStorage|TessellationTGSICompilesInHostContext|DepthBlitConvertsPackedDepthToFloat)$' -count=1 -timeout 1m -v
       - name: Build Linux apps
         run: CGO_ENABLED=0 go build ./cmd/squadvm ./cmd/ndappx
   additional-platforms:

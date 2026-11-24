@@ -1001,7 +1001,7 @@ func (v *displayViewer) handleStartupInput(events []window.InputEvent) {
 				v.setResourceFromPointer(control, point.X, layout)
 			case startupControlGPUAcceleration:
 				v.startupFocus = control
-				v.settings.GPUAcceleration = !v.settings.GPUAcceleration
+				v.activateStartupControl(control)
 			case startupControlCVMFSMirror:
 				v.startupFocus = control
 				v.cvmfsMirrorMenuOpen = !v.cvmfsMirrorMenuOpen
@@ -1434,7 +1434,7 @@ func (v *displayViewer) drawAdvancedSettings(backingWidth, backingHeight int, sc
 	if !layout.gpuCheckbox.Empty() {
 		v.drawSettingsOption(
 			backingWidth, backingHeight, scale, layout.gpuCheckbox,
-			"Experimental GPU acceleration", "OpenGL acceleration on Apple silicon",
+			"Experimental GPU acceleration", "OpenGL acceleration for the guest desktop",
 			v.settings.GPUAcceleration,
 			v.startupFocusVisible && v.startupFocus == startupControlGPUAcceleration,
 			v.startupHover == startupControlGPUAcceleration,

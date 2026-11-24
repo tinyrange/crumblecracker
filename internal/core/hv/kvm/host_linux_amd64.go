@@ -28,6 +28,7 @@ type LinuxManagedMachine struct {
 	BalloonMB       uint64
 	DisplayWidth    uint32
 	DisplayHeight   uint32
+	Accelerated3D   bool
 	SnapshotDir     string
 	RestoreSnapshot string
 	SharedMemory    *shmem.Attachment
@@ -39,6 +40,7 @@ type LinuxManagedAttachments struct {
 	BalloonMB       uint64
 	DisplayWidth    uint32
 	DisplayHeight   uint32
+	Accelerated3D   bool
 	SnapshotDir     string
 	RestoreSnapshot string
 	SharedMemory    *shmem.Attachment
@@ -76,6 +78,7 @@ func (Host) startLinux(ctx context.Context, req managedhost.StartRequest, onEven
 		BalloonMB:       attachments.BalloonMB,
 		DisplayWidth:    attachments.DisplayWidth,
 		DisplayHeight:   attachments.DisplayHeight,
+		Accelerated3D:   attachments.Accelerated3D,
 		SnapshotDir:     strings.TrimSpace(attachments.SnapshotDir),
 		RestoreSnapshot: strings.TrimSpace(attachments.RestoreSnapshot),
 		SharedMemory:    attachments.SharedMemory,
@@ -99,6 +102,7 @@ func (Host) StartLinuxManaged(ctx context.Context, machine LinuxManagedMachine, 
 			BalloonMB:       machine.BalloonMB,
 			DisplayWidth:    machine.DisplayWidth,
 			DisplayHeight:   machine.DisplayHeight,
+			Accelerated3D:   machine.Accelerated3D,
 			SharedMemory:    machine.SharedMemory,
 		},
 		onEvent,

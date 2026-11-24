@@ -166,7 +166,7 @@ func TestDestroyObjectDoesNotDeleteOtherObjectTypesWithSameHandle(t *testing.T) 
 
 func TestProgramCacheEvictsLeastRecentlyUsedProgram(t *testing.T) {
 	var deleted []uint32
-	host := &darwinHost{
+	host := &openGLHost{
 		gl: &hostGL{
 			deleteProgram: func(program uint32) {
 				deleted = append(deleted, program)
@@ -1793,7 +1793,7 @@ void main() { color = vec4(1.0, varyingCoordinate.x * 0.0, 0.0, 1.0); }`}
 		host.gl.genBuffers(1, &retired)
 		host.gl.bindVertexArray(host.vao)
 		host.gl.bindBuffer(glArrayBuffer, retired)
-		host.gl.bufferData(glArrayBuffer, 4, 0, glStaticDraw)
+		host.gl.bufferData(glArrayBuffer, 4, nil, glStaticDraw)
 		host.gl.vertexAttribPtr(2, 1, glFloat, false, 4, 0)
 		host.gl.enableVertexAttrib(2)
 		host.gl.deleteBuffers(1, &retired)

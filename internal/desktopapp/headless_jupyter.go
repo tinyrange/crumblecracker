@@ -6,16 +6,14 @@ import (
 	"io"
 	"net/http"
 	"regexp"
-	"runtime"
 	"strings"
 	"time"
 
 	client "github.com/tinyrange/crumblecracker/internal/protocol"
 )
 
-// The macOS renderer can render without a shared presentation context. Glass
-// then uses its framebuffer readback path; no hidden window is created at boot.
-func headlessGPUSupported() bool { return runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" }
+// Glass uses framebuffer readback when the renderer owns an offscreen context.
+func headlessGPUSupported() bool { return platformExperimentalGPUAccelerationAvailable() }
 
 func (d *headlessRuntimeDriver) Jupyter(id string) *headlessJupyterResult {
 	d.mu.Lock()

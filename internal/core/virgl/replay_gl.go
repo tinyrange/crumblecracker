@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || (linux && amd64)
 
 package virgl
 
@@ -262,7 +262,7 @@ func replayCapture(capturePath, outputPath string, frame int, resourceID, resour
 		return 0, fmt.Errorf("open VirGL capture: %w", err)
 	}
 	defer decoder.close()
-	host, err := newDarwinHost()
+	host, err := newReplayHost()
 	if err != nil {
 		return 0, err
 	}
@@ -521,7 +521,7 @@ func replayCapture(capturePath, outputPath string, frame int, resourceID, resour
 	return checkpoint, writeReplayPNG(host, selectedResource, selectedRect, resourceLevel, outputPath)
 }
 
-func traceProjectiveDraw(output io.Writer, host *darwinHost, contextID uint32, checkpoint, draw int, seen map[string]struct{}) {
+func traceProjectiveDraw(output io.Writer, host *openGLHost, contextID uint32, checkpoint, draw int, seen map[string]struct{}) {
 	root := host.contexts[contextID]
 	if root == nil {
 		return
@@ -573,7 +573,7 @@ func traceProjectiveDraw(output io.Writer, host *darwinHost, contextID uint32, c
 		context.viewports[0].adjustY, rasterizer.state, w)
 }
 
-func clearReplayDrawTarget(host *darwinHost, resource *resource) error {
+func clearReplayDrawTarget(host *openGLHost, resource *resource) error {
 	if resource == nil {
 		return errors.New("VirGL draw replay target is unavailable at frame start")
 	}
@@ -596,7 +596,7 @@ func clearReplayDrawTarget(host *darwinHost, resource *resource) error {
 	})
 }
 
-func traceResourceDraw(output io.Writer, host *darwinHost, contextID uint32, draw int, resourceID uint32, seen map[string]struct{}, command command) {
+func traceResourceDraw(output io.Writer, host *openGLHost, contextID uint32, draw int, resourceID uint32, seen map[string]struct{}, command command) {
 	root := host.contexts[contextID]
 	if root == nil {
 		return
@@ -794,7 +794,7 @@ func traceResourceDraw(output io.Writer, host *darwinHost, contextID uint32, dra
 	}
 }
 
-func traceResourceBlit(output io.Writer, host *darwinHost, resources map[uint32]*resource, selectedID uint32, item command) {
+func traceResourceBlit(output io.Writer, host *openGLHost, resources map[uint32]*resource, selectedID uint32, item command) {
 	if len(item.Payload) != 21 {
 		return
 	}
@@ -902,7 +902,7 @@ func fixedWords(payload []byte, count int) ([]uint32, error) {
 	return result, nil
 }
 
-func writeReplayPNG(host *darwinHost, resource *resource, rect image.Rectangle, level uint32, path string) error {
+func writeReplayPNG(host *openGLHost, resource *resource, rect image.Rectangle, level uint32, path string) error {
 	var pixels []byte
 	var stride int
 	var err error
@@ -937,7 +937,7 @@ func writeReplayPNG(host *darwinHost, resource *resource, rect image.Rectangle, 
 	return file.Close()
 }
 
-func readReplayTextureLevel(host *darwinHost, resource *resource, level uint32) ([]byte, int, error) {
+func readReplayTextureLevel(host *openGLHost, resource *resource, level uint32) ([]byte, int, error) {
 	width, height := resource.description.Width>>level, resource.description.Height>>level
 	if width == 0 {
 		width = 1

@@ -1,4 +1,4 @@
-//go:build !darwin
+//go:build !darwin && (!linux || !amd64)
 
 package virgl
 
@@ -9,7 +9,7 @@ import (
 )
 
 func NewHostRenderer() (virtio.GPURenderer, error) {
-	return nil, errors.New("first-party VirGL host rendering is currently available on Darwin only")
+	return nil, errors.New("first-party VirGL host rendering is currently available on Darwin and Linux/amd64 only")
 }
 
 func NewHostRendererWithShareGroup(uintptr, uintptr) (virtio.GPURenderer, error) {
