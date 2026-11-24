@@ -13,6 +13,9 @@ const (
 	capsetV1Size              = 308
 	capsetV2Size              = 1376
 	capsetV2LimitsStart       = capsetV1Size
+	capsetUniformAlignment    = capsetV2LimitsStart + 76
+	capsetRendererOffset      = capsetV2LimitsStart + 388
+	capsetRendererLength      = 64
 	capsetMaxTexture2D        = 16384
 	capsetMaxTexture3D        = 2048
 	capsetMaxArrayLayers      = 2048
@@ -129,8 +132,7 @@ func buildCapsetV2() []byte {
 		maxTexture2DSizeOffset    = capsetV2LimitsStart + 176
 		hostFeatureVersionOffset  = capsetV2LimitsStart + 248
 		readbackFormatsOffset     = hostFeatureVersionOffset + 4
-		rendererOffset            = capsetV2LimitsStart + 388
-		maxAnisotropyOffset       = rendererOffset + 64
+		maxAnisotropyOffset       = capsetRendererOffset + capsetRendererLength
 		maxShaderSamplersOffset   = maxAnisotropyOffset + 4
 		multisampleFormatsOffset  = maxShaderSamplersOffset + 4
 		maxConstBufferSizeOffset  = capsetV2LimitsStart + 524
@@ -161,7 +163,6 @@ func buildCapsetV2() []byte {
 	// uniform-buffer sizes below. Earlier fields retain zero unless their
 	// command family is implemented; the two legacy defaults disabled by a
 	// nonzero version are restored through the matching capability bits.
-	put(capsetV2LimitsStart+76, 16)                             // uniform buffer offset alignment
 	put(capsetV2LimitsStart+84, (1<<2)|(1<<15)|(1<<18)|(1<<23)) // minimum samples, sRGB writes, mixed color formats, and transform feedback 3
 	put(hostFeatureVersionOffset, 13)
 	for stage := 0; stage < 6; stage++ {
@@ -173,7 +174,7 @@ func buildCapsetV2() []byte {
 			setFormat(readbackFormatsOffset, description.format)
 		}
 	}
-	copy(data[rendererOffset:rendererOffset+64], []byte("vmsh Darwin VirGL"))
+	setCapsetHostInfo(data, "vmsh Darwin VirGL", 16)
 	putFloat(maxAnisotropyOffset, capsetMaxAnisotropy)
 	put(maxShaderSamplersOffset, 16)
 	for _, description := range textureFormatDescriptions {
@@ -182,4 +183,11 @@ func buildCapsetV2() []byte {
 		}
 	}
 	return data
+}
+
+func setCapsetHostInfo(data []byte, renderer string, alignment uint32) {
+	binary.LittleEndian.PutUint32(data[capsetUniformAlignment:], alignment)
+	name := data[capsetRendererOffset : capsetRendererOffset+capsetRendererLength]
+	clear(name)
+	copy(name[:len(name)-1], renderer)
 }

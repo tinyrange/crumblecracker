@@ -30,13 +30,14 @@ const (
 )
 
 type captureHost struct {
-	next       hostBackend
-	file       *os.File
-	compressed *gzip.Writer
-	writer     *bufio.Writer
-	frames     int
-	maxFrames  int
-	closed     bool
+	nativeCheckpoint bool
+	next             hostBackend
+	file             *os.File
+	compressed       *gzip.Writer
+	writer           *bufio.Writer
+	frames           int
+	maxFrames        int
+	closed           bool
 }
 
 func captureHostFromEnvironment(next hostBackend) (hostBackend, error) {
@@ -228,36 +229,61 @@ func encodeCommands(commands []command) []byte {
 }
 
 func (h *captureHost) readScanout(resource *resource, rect image.Rectangle) ([]byte, int, error) {
-	return h.next.readScanout(resource, rect)
+	pixels, stride, err := h.next.readScanout(resource, rect)
+	if err != nil {
+		return nil, 0, err
+	}
+	if h.nativeCheckpoint {
+		return pixels, stride, nil
+	}
+	return pixels, stride, h.recordScanout(resource, rect)
 }
 
 func (h *captureHost) nativeScanout(resource *resource, rect image.Rectangle) (virtio.GPUNativeFrame, bool, error) {
 	frame, available, err := h.next.nativeScanout(resource, rect)
-	if err != nil || !available || h.closed {
+	h.nativeCheckpoint = available && err == nil
+	if !h.nativeCheckpoint {
 		return frame, available, err
+	}
+	if err := h.recordScanout(resource, rect); err != nil {
+		if frame.ReleaseFrame != nil {
+			frame.ReleaseFrame(0)
+		}
+		h.nativeCheckpoint = false
+		return virtio.GPUNativeFrame{}, false, err
+	}
+	return frame, true, nil
+}
+
+func (h *captureHost) recordScanout(resource *resource, rect image.Rectangle) error {
+	if h.closed {
+		return nil
 	}
 	h.frames++
 	if err := h.writeRecord(captureScanout, words(
 		resource.description.ID,
 		uint32(rect.Min.X), uint32(rect.Min.Y), uint32(rect.Max.X), uint32(rect.Max.Y),
 	)); err != nil {
-		return virtio.GPUNativeFrame{}, false, err
+		return err
 	}
 	if err := h.writer.Flush(); err != nil {
-		return virtio.GPUNativeFrame{}, false, err
+		return err
 	}
 	if err := h.compressed.Flush(); err != nil {
-		return virtio.GPUNativeFrame{}, false, err
+		return err
 	}
 	if h.frames >= h.maxFrames {
-		if err := h.finishCapture(); err != nil {
-			return virtio.GPUNativeFrame{}, false, err
-		}
+		return h.finishCapture()
 	}
-	return frame, available, nil
+	return nil
+}
+
+func (h *captureHost) waitForFence() error {
+	return h.next.waitForFence()
 }
 
 func (h *captureHost) reset() error {
+	h.nativeCheckpoint = false
 	if err := h.next.reset(); err != nil {
 		return err
 	}

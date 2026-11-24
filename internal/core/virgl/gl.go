@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin || (linux && amd64)
 
 package virgl
 
@@ -275,19 +275,22 @@ const (
 )
 
 type hostGL struct {
+	renderer                        string
+	uniformBufferAlignment          uint32
 	genTextures                     func(int32, *uint32)
 	deleteTextures                  func(int32, *uint32)
 	bindTexture                     func(uint32, uint32)
 	activeTexture                   func(uint32)
-	texImage1D                      func(uint32, int32, int32, int32, int32, uint32, uint32, uintptr)
-	texSubImage1D                   func(uint32, int32, int32, int32, uint32, uint32, uintptr)
-	texImage2D                      func(uint32, int32, int32, int32, int32, int32, uint32, uint32, uintptr)
-	texSubImage2D                   func(uint32, int32, int32, int32, int32, int32, uint32, uint32, uintptr)
-	texImage3D                      func(uint32, int32, int32, int32, int32, int32, int32, uint32, uint32, uintptr)
-	texSubImage3D                   func(uint32, int32, int32, int32, int32, int32, int32, int32, uint32, uint32, uintptr)
-	getTexImage                     func(uint32, int32, uint32, uint32, uintptr)
+	texImage1D                      func(uint32, int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
+	texSubImage1D                   func(uint32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
+	texImage2D                      func(uint32, int32, int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
+	texSubImage2D                   func(uint32, int32, int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
+	texImage3D                      func(uint32, int32, int32, int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
+	texSubImage3D                   func(uint32, int32, int32, int32, int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
+	getTexImage                     func(uint32, int32, uint32, uint32, unsafe.Pointer)
 	texImage2DMultisample           func(uint32, int32, uint32, int32, int32, bool)
 	texImage3DMultisample           func(uint32, int32, uint32, int32, int32, int32, bool)
+	getTexParameteriv               func(uint32, uint32, *int32)
 	texParameteri                   func(uint32, uint32, int32)
 	texParameterf                   func(uint32, uint32, float32)
 	texParameterfv                  func(uint32, uint32, *float32)
@@ -303,9 +306,9 @@ type hostGL struct {
 	genBuffers                      func(int32, *uint32)
 	deleteBuffers                   func(int32, *uint32)
 	bindBuffer                      func(uint32, uint32)
-	bufferData                      func(uint32, int, uintptr, uint32)
-	bufferSubData                   func(uint32, int, int, uintptr)
-	getBufferSubData                func(uint32, int, int, uintptr)
+	bufferData                      func(uint32, int, unsafe.Pointer, uint32)
+	bufferSubData                   func(uint32, int, int, unsafe.Pointer)
+	getBufferSubData                func(uint32, int, int, unsafe.Pointer)
 	bindBufferRange                 func(uint32, uint32, uint32, int, int)
 	genVertexArrays                 func(int32, *uint32)
 	deleteVertexArrays              func(int32, *uint32)
@@ -412,7 +415,7 @@ type hostGL struct {
 	endConditionalRender            func()
 	primitiveRestartIndex           func(uint32)
 	polygonOffset                   func(float32, float32)
-	readPixels                      func(int32, int32, int32, int32, uint32, uint32, uintptr)
+	readPixels                      func(int32, int32, int32, int32, uint32, uint32, unsafe.Pointer)
 	clearBufferfv                   func(uint32, int32, *float32)
 	clearBufferiv                   func(uint32, int32, *int32)
 	clearBufferuiv                  func(uint32, int32, *uint32)
@@ -429,13 +432,18 @@ type hostGL struct {
 	isEnabled                       func(uint32) bool
 }
 
-func loadHostGL() (*hostGL, error) {
-	handle, err := purego.Dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", purego.RTLD_GLOBAL|purego.RTLD_LAZY)
-	if err != nil {
-		return nil, fmt.Errorf("load OpenGL for VirGL: %w", err)
-	}
+func loadHostGL(resolve func(string) (uintptr, error)) (*hostGL, error) {
+	var loadErr error
 	register := func(destination any, name string) {
-		purego.RegisterLibFunc(destination, handle, name)
+		if loadErr != nil {
+			return
+		}
+		address, err := resolve(name)
+		if err != nil {
+			loadErr = fmt.Errorf("resolve VirGL entry point %s: %w", name, err)
+			return
+		}
+		purego.RegisterFunc(destination, address)
 	}
 	gl := &hostGL{}
 	register(&gl.genTextures, "glGenTextures")
@@ -452,6 +460,7 @@ func loadHostGL() (*hostGL, error) {
 	register(&gl.texImage2DMultisample, "glTexImage2DMultisample")
 	register(&gl.texImage3DMultisample, "glTexImage3DMultisample")
 	register(&gl.texParameteri, "glTexParameteri")
+	register(&gl.getTexParameteriv, "glGetTexParameteriv")
 	register(&gl.texParameterf, "glTexParameterf")
 	register(&gl.texParameterfv, "glTexParameterfv")
 	register(&gl.texBuffer, "glTexBuffer")
@@ -590,7 +599,7 @@ func loadHostGL() (*hostGL, error) {
 	register(&gl.getError, "glGetError")
 	register(&gl.getFloatv, "glGetFloatv")
 	register(&gl.isEnabled, "glIsEnabled")
-	return gl, nil
+	return gl, loadErr
 }
 
 func (gl *hostGL) compileProgram(vertexSource, fragmentSource string) (uint32, error) {
@@ -707,18 +716,14 @@ func (gl *hostGL) programLog(program uint32) string {
 	return string(result[:length])
 }
 
-func glPointer(bytes []byte) uintptr {
-	if len(bytes) == 0 {
-		return 0
-	}
-	return uintptr(unsafe.Pointer(&bytes[0]))
+// Keep client-memory addresses typed as pointers through the GL call so
+// stack growth and garbage collection can track the backing storage.
+func glPointer(bytes []byte) unsafe.Pointer {
+	return unsafe.Pointer(unsafe.SliceData(bytes))
 }
 
-func glPointerUint32(words []uint32) uintptr {
-	if len(words) == 0 {
-		return 0
-	}
-	return uintptr(unsafe.Pointer(&words[0]))
+func glPointerUint32(words []uint32) unsafe.Pointer {
+	return unsafe.Pointer(unsafe.SliceData(words))
 }
 
 func uniformLocation(gl *hostGL, program uint32, name string) int32 {

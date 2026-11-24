@@ -1698,6 +1698,10 @@ func (s *tgsiShader) register(raw string, destination bool) (string, string, err
 		if !ok {
 			return "", "", fmt.Errorf("tessellation output register %d is not declared", index)
 		}
+		if destination {
+			// GLSL requires the literal invocation ID for per-vertex writes.
+			vertex = "gl_InvocationID"
+		}
 		name := s.tessControlOutputNameAt(declaration, index, vertex)
 		mask := match[5]
 		if destination && mask != "" {
@@ -1727,7 +1731,10 @@ func (s *tgsiShader) register(raw string, destination bool) (string, string, err
 		if !ok {
 			return "", "", fmt.Errorf("tessellation output register %d is not declared", index)
 		}
-		vertex := fmt.Sprintf("address[%d].%s", addressIndex, match[2])
+		vertex := "gl_InvocationID"
+		if !destination {
+			vertex = fmt.Sprintf("address[%d].%s", addressIndex, match[2])
+		}
 		name := s.tessControlOutputNameAt(declaration, index, vertex)
 		mask := match[4]
 		if destination && mask != "" {

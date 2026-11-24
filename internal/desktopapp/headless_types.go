@@ -214,7 +214,7 @@ func (r *headlessVMRequest) validate(config Config) error {
 		return invalid("display")
 	}
 	if r.Display.GPU && !headlessGPUSupported() {
-		return headlessFailure("unsupported_configuration", "Windowless GPU acceleration requires Apple Silicon")
+		return headlessFailure("unsupported_configuration", "Windowless GPU acceleration requires Apple Silicon or a Linux/amd64 host with a supported OpenGL driver")
 	}
 	if r.Jupyter != nil && (config.Kind != "ndappx" || !r.Network.Enabled || r.User != "jovyan" || r.Jupyter.HostPort < 1024 || r.Jupyter.HostPort > 65535) {
 		return invalid("jupyter.host_port/user/network")

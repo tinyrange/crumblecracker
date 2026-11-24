@@ -95,18 +95,21 @@ func TestGPU3DTransportCarriesMesaCommandsToRenderer(t *testing.T) {
 	requireGPUResponse(t, gpu.dispatchLocked(transfer, gpuQueueControl), gpuRespOKNoData)
 
 	submit := gpuTestRequest(gpuCmdSubmit3D, 40)
-	binary.LittleEndian.PutUint32(submit[4:8], 1)
+	binary.LittleEndian.PutUint32(submit[4:8], gpuFlagFence)
 	binary.LittleEndian.PutUint64(submit[8:16], 99)
 	binary.LittleEndian.PutUint32(submit[16:20], 4)
 	binary.LittleEndian.PutUint32(submit[24:28], 8)
 	copy(submit[32:], []byte{1, 0, 2, 0, 3, 0, 4, 0})
 	response = gpu.dispatchLocked(submit, gpuQueueControl)
 	requireGPUResponse(t, response, gpuRespOKNoData)
-	if flags := binary.LittleEndian.Uint32(response[4:8]); flags&1 == 0 {
+	if flags := binary.LittleEndian.Uint32(response[4:8]); flags&gpuFlagFence == 0 {
 		t.Fatalf("fenced response flags = %#x", flags)
 	}
 	if fence := binary.LittleEndian.Uint64(response[8:16]); fence != 99 {
 		t.Fatalf("fence id = %d, want 99", fence)
+	}
+	if renderer.fenceWaits != 1 {
+		t.Fatalf("host fence waits = %d, want one for the fenced submission", renderer.fenceWaits)
 	}
 	if !bytes.Equal(renderer.submitted, submit[32:]) {
 		t.Fatalf("submitted commands = %v", renderer.submitted)
@@ -220,6 +223,7 @@ type recordingGPURenderer struct {
 	contexts    map[uint32]struct{}
 	resources   map[uint32]GPUResource3D
 	readCalls   int
+	fenceWaits  int
 }
 
 func (r *recordingGPURenderer) Capsets() []GPUCapset { return r.capsets }
@@ -276,6 +280,11 @@ func (r *recordingGPURenderer) TransferFromHost(transfer GPUTransfer3D) error {
 
 func (r *recordingGPURenderer) Submit(_ uint32, commands []byte) error {
 	r.submitted = append([]byte(nil), commands...)
+	return nil
+}
+
+func (r *recordingGPURenderer) WaitForFence() error {
+	r.fenceWaits++
 	return nil
 }
 

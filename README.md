@@ -8,8 +8,11 @@ Desktop downloads and releases are available from
 This is an independent production codebase, condensed from cc. It contains the
 two desktop apps, their shared frontend, and the runtime needed to boot Linux
 images, preserve user storage, share files, run guest commands, and present the
-desktop. Apple Silicon GPU acceleration uses the first-party VirGL renderer and
-shared OpenGL textures.
+desktop. On Apple Silicon and Linux/amd64, open **Advanced** in the startup
+settings and select **Experimental GPU acceleration** to enable VirGL. The
+option is off by default. Linux requires EGL, GBM, an accessible DRM render node,
+and a hardware desktop OpenGL 4.1 core driver that meets the VirGL profile.
+Set `VMSH_VIRGL_RENDER_NODE` to select a specific render node.
 
 The experimental runtime, full daemon and worker system, interactive vmsh shell,
 and other frontends remain in [cc](https://github.com/tinyrange/cc). This repository

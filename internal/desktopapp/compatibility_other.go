@@ -2,12 +2,14 @@
 
 package desktopapp
 
+import "runtime"
+
 func platformCompatibilityError() error {
 	return nil
 }
 
 func platformExperimentalGPUAccelerationAvailable() bool {
-	return false
+	return runtime.GOOS == "linux" && runtime.GOARCH == "amd64"
 }
 
 func platformNativeGPUScanoutAvailable() bool {

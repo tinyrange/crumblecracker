@@ -53,6 +53,7 @@ const (
 	gpuFormatA8R8G8B8 = 3
 	gpuFormatX8R8G8B8 = 4
 
+	gpuFlagFence         = 1
 	gpuControlHeaderSize = 24
 	gpuMaxScanouts       = 16
 )
@@ -386,6 +387,20 @@ func (g *GPU) processQueueLocked(queueIndex int) error {
 }
 
 func (g *GPU) dispatchLocked(request []byte, queueIndex int) []byte {
+	response := g.handleCommandLocked(request, queueIndex)
+	waiter, ok := g.renderer.(GPUFenceWaiter)
+	if ok && queueIndex == gpuQueueControl &&
+		binary.LittleEndian.Uint32(response[4:8])&gpuFlagFence != 0 &&
+		binary.LittleEndian.Uint32(response[0:4]) < gpuRespErrUnspecified {
+		if err := waiter.WaitForFence(); err != nil {
+			g.reportGPUErrorLocked(err)
+			return gpuResponse(request, gpuRespErrUnspecified, nil)
+		}
+	}
+	return response
+}
+
+func (g *GPU) handleCommandLocked(request []byte, queueIndex int) []byte {
 	if len(request) < gpuControlHeaderSize {
 		return gpuResponse(request, gpuRespErrInvalidParameter, nil)
 	}

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func newDarwinTestHost(t *testing.T) *darwinHost {
+func newDarwinTestHost(t *testing.T) *openGLHost {
 	t.Helper()
 	host, err := newDarwinHost()
 	if errors.Is(err, errDarwinAcceleratedOpenGLUnavailable) {
@@ -17,4 +17,9 @@ func newDarwinTestHost(t *testing.T) *darwinHost {
 		t.Fatal(err)
 	}
 	return host
+}
+
+func newReplayTestHost(t *testing.T) *openGLHost {
+	t.Helper()
+	return newDarwinTestHost(t)
 }

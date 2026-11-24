@@ -30,6 +30,7 @@ type hostBackend interface {
 	execute(contextID uint32, commands []command, resources map[uint32]*resource) error
 	readScanout(resource *resource, rect image.Rectangle) ([]byte, int, error)
 	nativeScanout(resource *resource, rect image.Rectangle) (virtio.GPUNativeFrame, bool, error)
+	waitForFence() error
 	reset() error
 	close() error
 }
@@ -39,8 +40,7 @@ type bufferTransferQueuer interface {
 }
 
 // Renderer is cc's first-party implementation of the VirGL Gallium command
-// protocol. Backend GL execution is platform-specific; protocol and object
-// validation remain here.
+// protocol. It validates protocol objects and forwards rendering to the host backend.
 type Renderer struct {
 	mu        sync.Mutex
 	capsets   []virtio.GPUCapset
@@ -438,6 +438,15 @@ func (r *Renderer) NativeScanout(resourceID uint32, rect image.Rectangle) (virti
 		return virtio.GPUNativeFrame{}, false, fmt.Errorf("unknown VirGL scanout resource %d", resourceID)
 	}
 	return r.host.nativeScanout(resource, rect)
+}
+
+func (r *Renderer) WaitForFence() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.host == nil {
+		return nil
+	}
+	return r.host.waitForFence()
 }
 
 func (r *Renderer) Reset() {
