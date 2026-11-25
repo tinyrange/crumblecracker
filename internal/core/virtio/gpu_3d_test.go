@@ -208,6 +208,69 @@ func TestGPUNativeScanoutDefersReadbackUntilCPUConsumer(t *testing.T) {
 	}
 }
 
+func TestGPUReusableReadbackPreservesPublishedFrames(t *testing.T) {
+	framebuffer, err := NewFramebuffer(2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := &recordingGPURenderer{}
+	renderer := &reusableRecordingGPURenderer{recordingGPURenderer: base}
+	gpu := NewGPUWithRenderer(0x1000, 0x1000, 9, framebuffer, renderer)
+	full := image.Rect(3, 4, 5, 6)
+	gpu.scanoutRect = full
+	visible := image.Rect(0, 0, 2, 2)
+
+	base.scanout = bytes.Repeat([]byte{1, 2, 3, 0}, 4)
+	firstPixels := base.scanout
+	if err := gpu.readScanoutLocked(7, full); err != nil {
+		t.Fatal(err)
+	}
+	first := framebuffer.Snapshot(visible, 0, false)
+
+	base.scanout = bytes.Repeat([]byte{4, 5, 6, 0}, 4)
+	if err := gpu.readScanoutLocked(7, full); err != nil {
+		t.Fatal(err)
+	}
+	second := framebuffer.Snapshot(visible, first.Generation, false)
+	if second.Generation <= first.Generation || !bytes.Equal(second.Pixels, base.scanout) {
+		t.Fatalf("second frame = %+v", second)
+	}
+
+	renderer.fail = true
+	base.scanout = bytes.Repeat([]byte{7, 8, 9, 0}, 4)
+	if err := gpu.readScanoutLocked(7, full); err == nil {
+		t.Fatal("expected injected readback error")
+	}
+	afterError := framebuffer.Snapshot(visible, second.Generation, false)
+	if afterError.Generation != second.Generation || !bytes.Equal(afterError.Pixels, second.Pixels) {
+		t.Fatalf("failed readback changed the published frame: %+v", afterError)
+	}
+
+	renderer.fail = false
+	base.scanout = []byte{10, 11, 12, 0}
+	if err := gpu.readScanoutLocked(7, image.Rect(4, 5, 5, 6)); err != nil {
+		t.Fatal(err)
+	}
+	current := framebuffer.Snapshot(visible, 0, false)
+	want := append(bytes.Repeat([]byte{4, 5, 6, 0}, 3), base.scanout...)
+	if !bytes.Equal(current.Pixels, want) || !bytes.Equal(first.Pixels, firstPixels) {
+		t.Fatalf("partial frame = %v, want %v; first frame = %v", current.Pixels, want, first.Pixels)
+	}
+}
+
+type reusableRecordingGPURenderer struct {
+	*recordingGPURenderer
+	fail bool
+}
+
+func (r *reusableRecordingGPURenderer) ReadScanoutInto(_ uint32, rect image.Rectangle, pixels []byte) ([]byte, int, error) {
+	pixels = append(pixels[:0], r.scanout...)
+	if r.fail {
+		return nil, 0, fmt.Errorf("injected readback error")
+	}
+	return pixels, rect.Dx() * 4, nil
+}
+
 func putGPUTestBox(dst []byte, x, y, z, width, height, depth uint32) {
 	for index, value := range []uint32{x, y, z, width, height, depth} {
 		binary.LittleEndian.PutUint32(dst[index*4:], value)

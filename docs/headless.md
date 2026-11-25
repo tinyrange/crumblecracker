@@ -58,6 +58,8 @@ use a new key. IDs and replay/operation records are scoped to the child lifetime
    native window on the platform UI thread. Its operation succeeds after a desktop
    frame has actually been presented. It returns a native-window session, not a
    Jupyter URL. Poll VM status for window closure or guest failure.
+   When `/v1/info` advertises `glass_focus`, send `"focus_if_open":true` to
+   restore and raise an existing window. The operation returns its session ID.
 6. Closing Glass detaches the window and releases its frame/input state. The VM
    remains running; another spawn reopens the same desktop. Stop via
    `POST /v1/vms/{vm_id}/stop`, or shut down the entire child using
@@ -122,9 +124,14 @@ both the image and kernel are ready. Polling recomputes rates even during stalls
 The initial implementation uses full layer preparation for new downloads and
 reuses cached indexed/enhanced layers. It does not claim that future CVMFS content
 has already been downloaded. Windowless desktop GPU acceleration is available
-on Apple Silicon and Linux/amd64. The renderer owns its offscreen hardware OpenGL
-context, and Glass presents pixels via framebuffer readback. Linux requires EGL,
-GBM, and an accessible DRM render node with a supported desktop OpenGL driver.
+on Apple Silicon, Linux/amd64, and Windows/amd64. It defaults to enabled when
+the backend can initialize the hardware renderer. Set
+`display.gpu_acceleration` to `false` to opt out, as in the request above.
+The renderer owns its offscreen
+hardware OpenGL context, and Glass presents pixels via framebuffer readback.
+Linux requires EGL, GBM, and an accessible DRM render node with a supported
+desktop OpenGL driver. Windows requires a compatible hardware OpenGL 4.1 core
+driver in the session running the backend.
 Use authenticated `GET /v1/vms/{id}/diagnostics` for service and `glxinfo -B`
 output. For hardware acceptance, also verify the host OpenGL renderer identity.
 `GET /v1/vms/{id}/screenshot` returns a PNG of the guest framebuffer only after

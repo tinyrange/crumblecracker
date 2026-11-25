@@ -27,7 +27,7 @@ func (d *headlessRuntimeDriver) Jupyter(id string) *headlessJupyterResult {
 
 func (d *headlessRuntimeDriver) startJupyter(ctx context.Context, id string, port int) error {
 	api := d.machine(id)
-	response, err := api.RunInContext(ctx, id, client.RunRequest{User: "root", Command: []string{"systemctl", "start", "neurodesktop-jupyter.service"}, TimeoutSeconds: 300})
+	response, err := api.RunInContext(ctx, id, client.RunRequest{User: "root", Command: []string{"/bin/sh", "-eu", "-c", startNeurodesktopJupyter}, TimeoutSeconds: 300})
 	if err != nil {
 		return err
 	}
@@ -74,3 +74,36 @@ func (d *headlessRuntimeDriver) startJupyter(ctx context.Context, id string, por
 	d.mu.Unlock()
 	return nil
 }
+
+// The published Glass image starts this unit from its desktop launcher.
+// Supply the private state that the launcher normally prepares when running
+// Jupyter before Glass.
+const startNeurodesktopJupyter = `
+if [ "$(systemctl show --property=LoadState --value neurodesktop-prepare.service)" = not-found ] &&
+   [ "$(systemctl show --property=LoadState --value neurodesktop-jupyter.service)" = loaded ]; then
+	group=$(id -g jovyan)
+	runtime=/run/user/1000/neurodesktop
+	state=/home/jovyan/.local/state/Neurodesktop
+	install -d -m 0700 -o jovyan -g "$group" /run/user/1000 "$runtime" "$runtime/jupyter"
+	for dir in "$state" /home/jovyan/.local/share/jupyter /home/jovyan/.local/share/code-server/extensions; do
+		if [ ! -d "$dir" ]; then
+			runuser -u jovyan -- mkdir -m 0700 -p "$dir"
+		fi
+	done
+	if [ ! -e "$state/jupyter.log" ]; then
+		install -m 0600 -o jovyan -g "$group" /dev/null "$state/jupyter.log"
+	fi
+	install -d -m 0700 /run/ccx3-jupyter
+	dropin=/run/systemd/system/neurodesktop-jupyter.service.d
+	install -d -m 0755 "$dropin"
+	umask 077
+	token=$(od -An -v -tx1 -N32 /dev/urandom | tr -d ' \n')
+	test "${#token}" -eq 64
+	printf '%s\n' "$token" > /run/ccx3-jupyter/token
+	install -m 0600 -o jovyan -g "$group" /run/ccx3-jupyter/token "$runtime/jupyter.token"
+	printf 'JUPYTER_TOKEN=%s\nJUPYTER_RUNTIME_DIR=%s/jupyter\n' "$token" "$runtime" > /run/ccx3-jupyter/environment
+	printf '[Service]\nEnvironmentFile=/run/ccx3-jupyter/environment\n' > "$dropin/95-ccx3-auth.conf"
+	systemctl daemon-reload
+fi
+systemctl start neurodesktop-jupyter.service
+`

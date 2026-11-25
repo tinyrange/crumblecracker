@@ -102,7 +102,12 @@ void main() {
 )
 
 type displayViewer struct {
-	onPresentation      func(int, int)
+	onPresentation        func(int, int)
+	onLoadingPresentation func()
+	focusEvents           <-chan struct{}
+	onFocus               func()
+
+	glassStartup        bool
 	session             display.Session
 	automation          *desktopAutomation
 	automationAutostart bool
@@ -132,6 +137,7 @@ type displayViewer struct {
 	brandHeight         int
 	textureWidth        int
 	textureHeight       int
+	linearMagnification bool
 	generation          uint64
 	nativeGeneration    uint64
 	presentedGeneration uint64
@@ -553,7 +559,9 @@ func (v *displayViewer) init() error {
 	v.gl.GenTextures(1, &v.texture)
 	v.gl.ActiveTexture(gl.Texture0)
 	v.gl.BindTexture(gl.Texture2D, v.texture)
-	v.gl.TexParameteri(gl.Texture2D, gl.TextureMinFilter, gl.Nearest)
+	// Windows can constrain the client area below the guest's resolution.
+	// Interpolate when shrinking so thin glyph strokes do not lose whole rows.
+	v.gl.TexParameteri(gl.Texture2D, gl.TextureMinFilter, gl.Linear)
 	v.gl.TexParameteri(gl.Texture2D, gl.TextureMagFilter, gl.Nearest)
 	v.gl.TexParameteri(gl.Texture2D, gl.TextureWrapS, gl.ClampToEdge)
 	v.gl.TexParameteri(gl.Texture2D, gl.TextureWrapT, gl.ClampToEdge)
@@ -654,6 +662,8 @@ func (v *displayViewer) loop(ctx context.Context) error {
 
 		for {
 			select {
+			case <-v.focusEvents:
+				v.onFocus()
 			case progress := <-v.startupEvents:
 				v.setStartupProgress(progress)
 				if progress.Failed {
@@ -670,6 +680,9 @@ func (v *displayViewer) loop(ctx context.Context) error {
 					continue
 				}
 				if result.err != nil {
+					if v.glassStartup {
+						return result.err
+					}
 					v.startCancel = nil
 					if ctx.Err() != nil {
 						return nil
@@ -800,6 +813,9 @@ func (v *displayViewer) loop(ctx context.Context) error {
 				v.gl.UseProgram(v.program)
 				v.gl.ActiveTexture(gl.Texture0)
 				v.gl.BindTexture(gl.Texture2D, texture)
+				if v.glassStartup && v.nativeFrame.Texture == 0 {
+					v.setDesktopMagnification(backingWidth, backingHeight)
+				}
 				v.gl.Uniform1i(v.flipY, boolInt32(v.nativeFrame.Texture != 0))
 				v.gl.BindVertexArray(v.vertexArray)
 				v.gl.DrawArrays(gl.Triangles, 0, 6)
@@ -814,6 +830,8 @@ func (v *displayViewer) loop(ctx context.Context) error {
 			v.drawUpdateNotifications(backingWidth, backingHeight, time.Now())
 		} else if v.showSettings {
 			v.drawSettings(backingWidth, backingHeight)
+		} else if v.glassStartup {
+			v.drawGlassStartup(backingWidth, backingHeight, time.Now())
 		} else {
 			v.drawStartup(backingWidth, backingHeight, time.Now())
 		}
@@ -830,6 +848,10 @@ func (v *displayViewer) loop(ctx context.Context) error {
 			v.automation.submitPresentationFrame(capture, backingWidth, backingHeight, generation, pixels)
 		}
 		v.window.Swap()
+		if v.onLoadingPresentation != nil {
+			v.onLoadingPresentation()
+			v.onLoadingPresentation = nil
+		}
 		v.presentedCursor = v.relativeCursorPresentation()
 		if v.desktopVisible && v.onPresentation != nil {
 			scale := normalizedDisplayScale(v.window.Scale())
@@ -847,6 +869,9 @@ func (v *displayViewer) handleStartupInput(events []window.InputEvent) {
 	scale := normalizedDisplayScale(v.window.Scale())
 	for _, event := range events {
 		if v.handleChromeInput(event) {
+			continue
+		}
+		if v.glassStartup {
 			continue
 		}
 		if (!v.showSettings && v.startup.Failed) || (v.showSettings && v.settingsFailureDetail() != "") {
@@ -1907,6 +1932,43 @@ func cvmfsPreflightDetail(ready bool, preflight startupPreflight) string {
 	return "No reachable mirror detected"
 }
 
+func (v *displayViewer) drawGlassStartup(backingWidth, backingHeight int, now time.Time) {
+	v.gl.Enable(gl.Blend)
+	v.drawBackground(backingWidth, backingHeight)
+	scale := normalizedDisplayScale(v.window.Scale())
+	centerX := float32(backingWidth) / scale / 2
+	chromeTop := v.chromeContentTop()
+	centerY := (float32(backingHeight)/scale + chromeTop) / 2
+	const dots = 12
+	phase := float64(now.UnixNano()%int64(time.Second)) / float64(time.Second) * dots
+	for i := range dots {
+		angle := float64(i)*2*math.Pi/dots - math.Pi/2
+		trail := math.Mod(phase-float64(i)+dots, dots) / dots
+		strength := math.Pow(1-trail, 2.4)
+		radius := 2.5 + 1.5*strength
+		x := float64(centerX) + 20*math.Cos(angle)
+		y := float64(centerY-39) + 20*math.Sin(angle)
+		bounds := image.Rect(int(math.Round(x-radius)), int(math.Round(y-radius)), int(math.Round(x+radius)), int(math.Round(y+radius)))
+		accent := uiAccent
+		accent.A = uint8(42 + 213*strength)
+		v.drawRoundedRect(backingWidth, backingHeight, scale, bounds, 4, accent)
+	}
+	v.text.SetViewport(int32(backingWidth), int32(backingHeight))
+	v.text.BeginDraw()
+	const title = "Loading the desktop"
+	const titleSize = 25
+	titleWidth := float32(v.text.GetAdvance(v.fontBold, titleSize, title))
+	v.drawTextBold(title, centerX-titleWidth/2, centerY+16, titleSize, uiText)
+	detail := "Starting your Neurodesk session"
+	if v.presentation.guestReady {
+		detail = "Waiting for the first desktop frame"
+	}
+	const detailSize = 15
+	detailWidth := float32(v.text.GetAdvance(v.font, detailSize, detail))
+	v.drawText(detail, centerX-detailWidth/2, centerY+45, detailSize, uiTextSecondary)
+	v.text.EndDraw()
+}
+
 func (v *displayViewer) drawStartup(backingWidth, backingHeight int, now time.Time) {
 	v.gl.Enable(gl.Blend)
 	scale := normalizedDisplayScale(v.window.Scale())
@@ -2806,6 +2868,9 @@ func (v *displayViewer) handleResize() error {
 		v.windowMinimized = false
 		v.generation = 0
 	}
+	if v.glassStartup && !v.desktopVisible {
+		return nil
+	}
 	size := v.guestDisplaySize(backingWidth, backingHeight)
 	if !v.resizeInitialized {
 		// Cocoa may constrain the requested content rectangle to the visible
@@ -2817,7 +2882,11 @@ func (v *displayViewer) handleResize() error {
 		v.lastResize = size
 		v.pendingResize = image.Point{}
 		v.resizeInitialized = true
-		return nil
+		if !v.glassStartup {
+			return nil
+		}
+		width, height := v.session.Size()
+		v.lastResize = image.Pt(width, height)
 	}
 	if size == v.lastResize {
 		v.pendingResize = image.Point{}
@@ -2837,6 +2906,21 @@ func (v *displayViewer) handleResize() error {
 	v.lastResize = size
 	v.pendingResize = image.Point{}
 	return nil
+}
+
+func (v *displayViewer) setDesktopMagnification(width, height int) {
+	// Keep exact pixel copies at integral scales. Fractional Windows DPI can
+	// otherwise duplicate some glyph rows and columns as it enlarges them.
+	linear := width%v.textureWidth != 0 || height%v.textureHeight != 0
+	if linear == v.linearMagnification {
+		return
+	}
+	filter := int32(gl.Nearest)
+	if linear {
+		filter = gl.Linear
+	}
+	v.gl.TexParameteri(gl.Texture2D, gl.TextureMagFilter, filter)
+	v.linearMagnification = linear
 }
 
 func guestDisplaySize(backingWidth, backingHeight int, scale float32) image.Point {

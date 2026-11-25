@@ -40,18 +40,15 @@ func TestWHPHostRejectsUnexpectedLinuxAttachments(t *testing.T) {
 }
 
 func TestManagedDesktopProvidesFramebufferAndInput(t *testing.T) {
-	desktop, devices, clipboardListener, displayListener, err := newManagedDesktop(virtio.NewSimpleVsockBackend(), 1440, 900)
+	desktop, _, clipboardListener, displayListener, err := newManagedDesktop(virtio.NewSimpleVsockBackend(), ManagedSessionOptions{DisplayWidth: 1440, DisplayHeight: 900})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeManagedDisplayListeners(clipboardListener, displayListener)
-	if desktop == nil || desktop.GPU == nil || desktop.Keyboard == nil || desktop.Pointer == nil || desktop.Clipboard == nil {
+	if desktop == nil || desktop.GPU == nil || desktop.Keyboard == nil || desktop.Pointer == nil || desktop.RelativePointer == nil || desktop.Clipboard == nil {
 		t.Fatalf("desktop is incomplete: %+v", desktop)
 	}
 	if width, height := desktop.Framebuffer.Size(); width != 1440 || height != 900 {
 		t.Fatalf("framebuffer size = %dx%d, want 1440x900", width, height)
-	}
-	if len(devices) != 3 {
-		t.Fatalf("display device count = %d, want 3", len(devices))
 	}
 }

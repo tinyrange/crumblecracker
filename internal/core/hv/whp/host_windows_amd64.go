@@ -26,6 +26,7 @@ type LinuxManagedMachine struct {
 	NetDevice       *virtio.Net
 	DisplayWidth    uint32
 	DisplayHeight   uint32
+	Accelerated3D   bool
 	SnapshotDir     string
 	RestoreSnapshot string
 }
@@ -35,6 +36,7 @@ type LinuxManagedAttachments struct {
 	NetDevice       *virtio.Net
 	DisplayWidth    uint32
 	DisplayHeight   uint32
+	Accelerated3D   bool
 	SnapshotDir     string
 	RestoreSnapshot string
 }
@@ -70,6 +72,7 @@ func (Host) startLinux(ctx context.Context, req managedhost.StartRequest, onEven
 		NetDevice:       attachments.NetDevice,
 		DisplayWidth:    attachments.DisplayWidth,
 		DisplayHeight:   attachments.DisplayHeight,
+		Accelerated3D:   attachments.Accelerated3D,
 		SnapshotDir:     attachments.SnapshotDir,
 		RestoreSnapshot: attachments.RestoreSnapshot,
 	}, onEvent)
@@ -82,6 +85,7 @@ func (Host) StartLinuxManaged(ctx context.Context, machine LinuxManagedMachine, 
 		RestoreSnapshot: strings.TrimSpace(machine.RestoreSnapshot),
 		DisplayWidth:    machine.DisplayWidth,
 		DisplayHeight:   machine.DisplayHeight,
+		Accelerated3D:   machine.Accelerated3D,
 	}
 	return StartManagedSessionWithNetOptions(ctx, machine.Kernel, machine.Initrd, machine.Spec.MemoryMB, machine.Spec.CPUs, machine.Spec.Dmesg, machine.FSDevices, machine.NetDevice, opts, onEvent)
 }

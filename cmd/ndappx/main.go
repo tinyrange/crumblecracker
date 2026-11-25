@@ -1,10 +1,13 @@
 package main
 
 import (
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"runtime"
+	"strings"
 
 	"github.com/tinyrange/crumblecracker/internal/desktopapp"
 )
@@ -51,8 +54,17 @@ systemctl unset-environment \
     APPTAINERENV_GALLIUM_DRIVER \
     APPTAINERENV_VTEST_SOCKET_NAME
 systemctl set-environment NEURODESKTOP_GPU_ACCELERATION=1
-systemctl restart --no-block neurodesktop-glass.service
 `
+
+//go:embed neurodesk-dri3-setup.sh
+var neurodeskDRI3Setup string
+
+func neurodeskGPUSetup() string {
+	if runtime.GOOS == "windows" && runtime.GOARCH == "amd64" {
+		return neurodeskGPUDesktopSetup + "\n" + strings.ReplaceAll(neurodeskDRI3Setup, "\r\n", "\n")
+	}
+	return neurodeskGPUDesktopSetup
+}
 
 var defaultCVMFSMirrors = []string{
 	"http://cvmfs-geoproximity.neurodesk.org",
@@ -129,7 +141,7 @@ func main() {
 		SSHHome:                            "/home/jovyan",
 		ReleaseAssetPrefix:                 "NeurodeskAppX",
 		ExperimentalGPUAcceleration:        true,
-		ExperimentalGPUDesktopSetup:        neurodeskGPUDesktopSetup,
+		ExperimentalGPUDesktopSetup:        neurodeskGPUSetup(),
 		ExperimentalCompressedOCI:          true,
 		ExperimentalBackgroundImageUpdates: true,
 		CVMFSHostMount: &desktopapp.CVMFSHostMountConfig{

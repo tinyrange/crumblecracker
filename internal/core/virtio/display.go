@@ -191,6 +191,18 @@ func (f *Framebuffer) Update(rect image.Rectangle, src []byte, srcStride int) er
 	return nil
 }
 
+func (f *Framebuffer) replaceScanout(rect image.Rectangle, pixels []byte, stride int) ([]byte, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if rect != image.Rect(0, 0, f.width, f.height) || stride != f.width*4 || len(pixels) != len(f.pixels) {
+		return nil, false
+	}
+	previous := f.pixels
+	f.pixels = pixels
+	f.markDirtyLocked(rect)
+	return previous, true
+}
+
 func (f *Framebuffer) MarkDirty(rect image.Rectangle) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

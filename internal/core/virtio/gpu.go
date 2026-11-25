@@ -109,6 +109,7 @@ type GPU struct {
 	nativeFrame      *GPUNativeFrame
 	nativeGeneration uint64
 	cpuGeneration    uint64
+	scanoutPixels    []byte
 }
 
 func NewGPU(base, size uint64, irq uint32, framebuffer *Framebuffer) *GPU {
@@ -935,15 +936,31 @@ func (g *GPU) flushResource3DLocked(resource *gpuResource, rect image.Rectangle)
 			return nil
 		}
 	}
-	pixels, stride, err := g.renderer.ReadScanout(resource.id, rect)
-	if err != nil {
-		return fmt.Errorf("read 3D scanout resource %d: %w", resource.id, err)
-	}
-	dstRect := rect.Sub(g.scanoutRect.Min)
-	if err := g.framebuffer.Update(dstRect, pixels, stride); err != nil {
-		return fmt.Errorf("update 3D scanout resource %d: %w", resource.id, err)
+	if err := g.readScanoutLocked(resource.id, rect); err != nil {
+		return fmt.Errorf("publish 3D scanout resource %d: %w", resource.id, err)
 	}
 	return nil
+}
+
+func (g *GPU) readScanoutLocked(resourceID uint32, rect image.Rectangle) error {
+	dstRect := rect.Sub(g.scanoutRect.Min)
+	if renderer, ok := g.renderer.(GPUReusableScanoutRenderer); ok {
+		pixels, stride, err := renderer.ReadScanoutInto(resourceID, rect, g.scanoutPixels)
+		if err != nil {
+			return err
+		}
+		if previous, replaced := g.framebuffer.replaceScanout(dstRect, pixels, stride); replaced {
+			g.scanoutPixels = previous
+			return nil
+		}
+		g.scanoutPixels = pixels
+		return g.framebuffer.Update(dstRect, pixels, stride)
+	}
+	pixels, stride, err := g.renderer.ReadScanout(resourceID, rect)
+	if err != nil {
+		return err
+	}
+	return g.framebuffer.Update(dstRect, pixels, stride)
 }
 
 func (g *GPU) AcquireNativeFrame(since uint64) (GPUNativeFrame, bool, error) {
@@ -976,13 +993,8 @@ func (g *GPU) syncNativeScanoutLocked() error {
 	if resource == nil || resource.resource3D == nil {
 		return nil
 	}
-	pixels, stride, err := g.renderer.ReadScanout(resource.id, g.scanoutRect)
-	if err != nil {
+	if err := g.readScanoutLocked(resource.id, g.scanoutRect); err != nil {
 		return fmt.Errorf("read native 3D scanout resource %d for CPU consumer: %w", resource.id, err)
-	}
-	dstRect := image.Rect(0, 0, g.scanoutRect.Dx(), g.scanoutRect.Dy())
-	if err := g.framebuffer.Update(dstRect, pixels, stride); err != nil {
-		return fmt.Errorf("update native 3D scanout resource %d for CPU consumer: %w", resource.id, err)
 	}
 	g.cpuGeneration = g.nativeGeneration
 	return nil
@@ -1131,6 +1143,7 @@ func (g *GPU) resetLocked() {
 	g.cursor.Hide()
 	g.nativeGeneration = 0
 	g.cpuGeneration = 0
+	g.scanoutPixels = nil
 	for index := range g.queues {
 		g.queues[index] = queue{}
 	}

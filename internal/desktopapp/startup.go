@@ -253,15 +253,21 @@ func formatBytes(value int64) string {
 	return fmt.Sprintf("%.1f %s", float64(value)/float64(divisor), suffix)
 }
 
-const desktopFrameSettleDelay = 250 * time.Millisecond
+const (
+	desktopFrameSettleDelay = 250 * time.Millisecond
+	desktopPaintGrace       = 6 * time.Second
+)
 
 // desktopPresentationGate keeps every guest frame off-screen until the
 // configured desktop session is running and a complete framebuffer has
 // remained available long enough for the compositor to paint.
 type desktopPresentationGate struct {
-	guestReady  bool
-	fullFrameAt time.Time
-	fullSize    image.Point
+	guestReady   bool
+	fullFrameAt  time.Time
+	fullSize     image.Point
+	waitForPaint bool
+	painted      bool
+	nonBlack     bool
 }
 
 func (g *desktopPresentationGate) markGuestReady() {
@@ -273,17 +279,28 @@ func (g *desktopPresentationGate) observe(update display.FramebufferUpdate, now 
 		return
 	}
 	full := image.Rect(0, 0, update.Width, update.Height)
-	if update.Rect != full || len(update.Pixels) < update.Width*update.Height*4 {
-		return
-	}
 	size := image.Pt(update.Width, update.Height)
-	if size != g.fullSize {
-		g.fullSize = size
-		g.fullFrameAt = now
-		return
+	if update.Rect == full && len(update.Pixels) >= update.Width*update.Height*4 {
+		if size != g.fullSize {
+			g.fullSize = size
+			g.fullFrameAt = now
+			g.painted = false
+		} else if g.fullFrameAt.IsZero() {
+			g.fullFrameAt = now
+		}
+		if g.waitForPaint {
+			g.nonBlack = update.Pixels[0]|update.Pixels[1]|update.Pixels[2] != 0
+		}
 	}
-	if g.fullFrameAt.IsZero() {
-		g.fullFrameAt = now
+	if g.waitForPaint && !g.painted && size == g.fullSize && len(update.Pixels) >= 8 {
+		pixels := update.Pixels
+		stride := max(1, len(pixels)/4/4096) * 4
+		for offset := stride; offset+2 < len(pixels); offset += stride {
+			if pixels[offset] != pixels[0] || pixels[offset+1] != pixels[1] || pixels[offset+2] != pixels[2] {
+				g.painted = true
+				break
+			}
+		}
 	}
 }
 
@@ -291,6 +308,7 @@ func (g *desktopPresentationGate) observeOpenGLFrame(frame display.OpenGLFrame, 
 	if !g.guestReady || frame.Width <= 0 || frame.Height <= 0 || frame.Texture == 0 {
 		return
 	}
+	g.painted = true
 	size := image.Pt(frame.Width, frame.Height)
 	if size != g.fullSize {
 		g.fullSize = size
@@ -303,5 +321,7 @@ func (g *desktopPresentationGate) observeOpenGLFrame(frame display.OpenGLFrame, 
 }
 
 func (g desktopPresentationGate) ready(now time.Time) bool {
-	return g.guestReady && !g.fullFrameAt.IsZero() && now.Sub(g.fullFrameAt) >= desktopFrameSettleDelay
+	elapsed := now.Sub(g.fullFrameAt)
+	return g.guestReady && !g.fullFrameAt.IsZero() && elapsed >= desktopFrameSettleDelay &&
+		(!g.waitForPaint || g.painted || (g.nonBlack && elapsed >= desktopPaintGrace))
 }

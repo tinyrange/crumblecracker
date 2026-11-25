@@ -44,7 +44,7 @@ type appSettings struct {
 	SharedFolder     string  `json:"shared_folder,omitempty"`
 	MemoryMB         uint64  `json:"memory_mb,omitempty"`
 	CPUs             int     `json:"cpus,omitempty"`
-	GPUAcceleration  bool    `json:"gpu_acceleration,omitempty"`
+	GPUAcceleration  bool    `json:"gpu_acceleration"`
 	CVMFSMirror      string  `json:"cvmfs_mirror,omitempty"`
 }
 
@@ -195,7 +195,7 @@ func loadAppSettings() (appSettings, string, error) {
 func loadAppSettingsFromDir(dir string) (appSettings, error) {
 	data, err := os.ReadFile(filepath.Join(dir, "settings.json"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return appSettings{}, nil
+		return appSettings{GPUAcceleration: true}, nil
 	}
 	if err != nil {
 		return appSettings{}, fmt.Errorf("read %s settings: %w", productName(), err)

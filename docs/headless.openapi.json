@@ -403,7 +403,7 @@
         "additionalProperties": false,
         "properties": {
           "gpu_acceleration": {
-            "default": false,
+            "description": "Defaults to true when the backend can initialize compatible host GPU acceleration. Set false to disable it.",
             "type": "boolean"
           },
           "height": {
@@ -522,6 +522,10 @@
       "GlassRequest": {
         "additionalProperties": false,
         "properties": {
+          "focus_if_open": {
+            "description": "When glass_focus is advertised, ensure the existing Glass window is restored and raised instead of spawning a second window.",
+            "type": "boolean"
+          },
           "height": {
             "maximum": 8192,
             "minimum": 320,
@@ -609,6 +613,9 @@
             "additionalProperties": false,
             "properties": {
               "docker_archive": {
+                "type": "boolean"
+              },
+              "glass_focus": {
                 "type": "boolean"
               },
               "gpu_acceleration": {

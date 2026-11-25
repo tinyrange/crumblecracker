@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tinyrange/crumblecracker/internal/core/virgl"
 	ccdisplay "github.com/tinyrange/crumblecracker/internal/display"
 	"github.com/tinyrange/crumblecracker/internal/protocol"
 )
@@ -57,6 +58,7 @@ func Run(config Config, args []string) (retErr error) {
 	network := fs.Bool("network", true, "Enable isolated networking with outbound internet access")
 	bootTimeout := fs.Duration("boot-timeout", 10*time.Minute, "VM preparation and boot timeout")
 	dmesg := fs.Bool("dmesg", false, "Forward the guest kernel log")
+	accelerateGPU := fs.Bool("gpu-acceleration", true, "Enable GPU acceleration for this launch (set false to disable it)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -94,6 +96,7 @@ func Run(config Config, args []string) (retErr error) {
 	var storageOptionSet bool
 	var memoryOptionSet bool
 	var cpuOptionSet bool
+	var gpuOptionSet bool
 	fs.Visit(func(item *flag.Flag) {
 		if item.Name == "vnc-listen" || item.Name == "vnc-password" {
 			vncOptionSet = true
@@ -106,6 +109,9 @@ func Run(config Config, args []string) (retErr error) {
 		}
 		if item.Name == "cpus" {
 			cpuOptionSet = true
+		}
+		if item.Name == "gpu-acceleration" {
+			gpuOptionSet = true
 		}
 	})
 	if !*vnc && vncOptionSet {
@@ -195,6 +201,20 @@ func Run(config Config, args []string) (retErr error) {
 		MaxCPUs:     runtime.NumCPU(),
 	})
 	gpuAccelerationAvailable := appConfig.ExperimentalGPUAcceleration && platformExperimentalGPUAccelerationAvailable()
+	selectedGPUAcceleration := settings.GPUAcceleration
+	if gpuOptionSet {
+		selectedGPUAcceleration = *accelerateGPU
+	}
+	gpuEnabled := false
+	if selectedGPUAcceleration && gpuAccelerationAvailable {
+		probeErr := virgl.ProbeHostRenderer()
+		if probeErr != nil && gpuOptionSet {
+			return fmt.Errorf("GPU acceleration unavailable: %w", probeErr)
+		}
+		gpuEnabled = probeErr == nil
+	} else if selectedGPUAcceleration && gpuOptionSet {
+		return fmt.Errorf("GPU acceleration is unavailable for this application and platform")
+	}
 
 	displayReady := make(chan ccdisplay.Session, 1)
 	var openGLShareContext atomic.Uintptr
@@ -286,10 +306,11 @@ func Run(config Config, args []string) (retErr error) {
 		InitSystem:  *initSystem,
 		Network:     networkConfig,
 		Display: &client.DisplayConfig{
-			Width:       uint32(width),
-			Height:      uint32(height),
-			VNCListen:   vncAddress,
-			VNCPassword: password,
+			Width:         uint32(width),
+			Height:        uint32(height),
+			VNCListen:     vncAddress,
+			VNCPassword:   password,
+			Accelerated3D: gpuEnabled,
 		},
 		Shares:           []client.ShareMount{storageShare},
 		PersistentMounts: persistentMounts,
@@ -315,6 +336,7 @@ func Run(config Config, args []string) (retErr error) {
 	if !*vnc {
 		displayContext, cancelDisplay := context.WithCancel(lifetimeContext)
 		monitorDone := make(chan error, 1)
+		lastGPUSelection := gpuEnabled
 		var preflightMu sync.Mutex
 		var latestPreflight startupPreflight
 		var imageStage backgroundImageStage
@@ -380,7 +402,9 @@ func Run(config Config, args []string) (retErr error) {
 			settings.SharedFolder = selectedShare.Source
 			settings.MemoryMB = options.MemoryMB
 			settings.CPUs = options.CPUs
-			settings.GPUAcceleration = options.GPUAccelerationAvailable && options.GPUAcceleration
+			if options.GPUAccelerationAvailable && options.GPUAcceleration != lastGPUSelection {
+				settings.GPUAcceleration = options.GPUAcceleration
+			}
 			settings.CVMFSMirror = options.CVMFSMirror
 			if options.SystemInstall {
 				settings.InstallMode = appInstallSystem
@@ -390,6 +414,7 @@ func Run(config Config, args []string) (retErr error) {
 			if err := saveAppSettings(settingsDir, settings); err != nil {
 				return displayStarted{}, err
 			}
+			lastGPUSelection = options.GPUAcceleration
 			hostHome, err := os.UserHomeDir()
 			if err != nil {
 				return displayStarted{}, fmt.Errorf("resolve home directory: %w", err)
@@ -615,7 +640,7 @@ func Run(config Config, args []string) (retErr error) {
 				CPUs:                     resourceOptions.CPUs,
 				MaxMemoryMB:              resourceOptions.MaxMemoryMB,
 				MaxCPUs:                  resourceOptions.MaxCPUs,
-				GPUAcceleration:          settings.GPUAcceleration && gpuAccelerationAvailable,
+				GPUAcceleration:          gpuEnabled,
 				GPUAccelerationAvailable: gpuAccelerationAvailable,
 				CVMFSRepo:                cvmfsConfigRepo(appConfig.CVMFSHostMount),
 				CVMFSMirrors:             cvmfsConfigMirrors(appConfig.CVMFSHostMount),
@@ -698,6 +723,11 @@ func Run(config Config, args []string) (retErr error) {
 	}
 	if state.Display == nil {
 		return fmt.Errorf("VM started without a graphical display")
+	}
+	if request.Display.Accelerated3D && strings.TrimSpace(appConfig.ExperimentalGPUDesktopSetup) != "" {
+		if err := runGuestRootScript(lifetimeContext, api, *name, appConfig.ExperimentalGPUDesktopSetup); err != nil {
+			return fmt.Errorf("configure accelerated %s desktop: %w", productName(), err)
+		}
 	}
 	if webApp != nil {
 		if err := webApp.configureGuest(lifetimeContext, api, *name); err != nil {

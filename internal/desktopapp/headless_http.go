@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tinyrange/crumblecracker/internal/core/oci"
 	"io"
 	"mime"
 	"net/http"
@@ -19,6 +18,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/tinyrange/crumblecracker/internal/core/oci"
+	"github.com/tinyrange/crumblecracker/internal/core/virgl"
 )
 
 type headlessReplay struct {
@@ -50,7 +52,9 @@ type headlessServer struct {
 
 func newHeadlessServer(config Config, storage, host, token string, driver headlessDriver) *headlessServer {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &headlessServer{config: config, defaults: headlessDefaults(config, storage), host: host, token: token, driver: driver, operations: map[string]*headlessOperation{}, trackers: map[string]*headlessProgressTracker{}, images: map[string]headlessImage{}, vms: map[string]*headlessVM{}, replays: map[string]*headlessReplay{}, ctx: ctx, cancel: cancel, shutdownGate: make(chan struct{}, 1), stopped: make(chan struct{})}
+	defaults := headlessDefaults(config, storage)
+	defaults.Display.GPU = config.ExperimentalGPUAcceleration && headlessGPUSupported() && virgl.ProbeHostRenderer() == nil
+	return &headlessServer{config: config, defaults: defaults, host: host, token: token, driver: driver, operations: map[string]*headlessOperation{}, trackers: map[string]*headlessProgressTracker{}, images: map[string]headlessImage{}, vms: map[string]*headlessVM{}, replays: map[string]*headlessReplay{}, ctx: ctx, cancel: cancel, shutdownGate: make(chan struct{}, 1), stopped: make(chan struct{})}
 }
 func headlessID(prefix string) string {
 	var b [16]byte
@@ -340,7 +344,7 @@ func (s *headlessServer) read(w http.ResponseWriter, r *http.Request, route stri
 		if s.closing {
 			state = "shutting_down"
 		}
-		headlessJSON(w, 200, map[string]any{"protocol": "ndappx", "api_version": 1, "version": headlessBuildVersion(), "state": state, "platform": map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH}, "capabilities": map[string]any{"max_active_vms": 1, "native_glass": true, "gpu_acceleration": headlessGPUSupported(), "jupyter_first": true, "docker_archive": true}, "defaults": map[string]any{"image": s.config.DefaultImage, "memory_mib": s.defaults.Memory, "cpus": s.defaults.CPUs, "user": s.defaults.User, "home_mode": "persistent", "storage_path": s.defaults.Storage.HostPath}})
+		headlessJSON(w, 200, map[string]any{"protocol": "ndappx", "api_version": 1, "version": headlessBuildVersion(), "state": state, "platform": map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH}, "capabilities": map[string]any{"max_active_vms": 1, "native_glass": true, "glass_focus": glassWindowFocusSupported, "gpu_acceleration": headlessGPUSupported(), "jupyter_first": true, "docker_archive": true}, "defaults": map[string]any{"image": s.config.DefaultImage, "memory_mib": s.defaults.Memory, "cpus": s.defaults.CPUs, "user": s.defaults.User, "home_mode": "persistent", "storage_path": s.defaults.Storage.HostPath}})
 	case "operation":
 		id := strings.TrimPrefix(r.URL.Path, "/v1/operations/")
 		op := s.operations[id]
@@ -463,6 +467,7 @@ func (s *headlessServer) mutate(w http.ResponseWriter, r *http.Request, route st
 		}()
 	case "start":
 		req := headlessDefaults(s.config, s.defaults.Storage.HostPath)
+		req.Display.GPU = s.defaults.Display.GPU
 		if err := headlessDecode(body, &req); err != nil {
 			fail(err)
 			return
@@ -521,9 +526,9 @@ func (s *headlessServer) mutate(w http.ResponseWriter, r *http.Request, route st
 			defer cancel()
 			s.mu.Lock()
 			op.State = "running"
-			op.Phase = "booting"
+			op.Phase = "preparing_storage"
 			s.mu.Unlock()
-			err := s.driver.Start(ctx, id, req)
+			err := s.driver.Start(ctx, id, req, s.phaseReporter(op))
 			released := false
 			if err != nil {
 				cleanup, finishCleanup := context.WithTimeout(context.Background(), 15*time.Second)
@@ -559,13 +564,22 @@ func (s *headlessServer) mutate(w http.ResponseWriter, r *http.Request, route st
 			return
 		}
 		if route == "glass" {
-			req := headlessGlassRequest{"Neurodesk", vm.Config.Display.Width, vm.Config.Display.Height, 120}
+			req := headlessGlassRequest{Title: "Neurodesk", Width: vm.Config.Display.Width, Height: vm.Config.Display.Height, Timeout: 120}
 			if err := headlessDecode(body, &req); err != nil {
 				fail(err)
 				return
 			}
 			if len([]rune(req.Title)) < 1 || len([]rune(req.Title)) > 128 || strings.ContainsRune(req.Title, 0) || !headlessSize(req.Width, req.Height) || req.Timeout < 1 || req.Timeout > 600 {
 				fail(headlessFailure("invalid_request", "Invalid Glass request"))
+				return
+			}
+			if req.FocusIfOpen && vm.State == "running" && vm.Glass != nil && vm.Glass.State == "open" && vm.glassFocus != nil {
+				select {
+				case vm.glassFocus <- struct{}{}:
+				default:
+				}
+				op := s.accept(w, "glass_spawn", &vm.ID)
+				s.finish(op, *vm.Glass, nil, "")
 				return
 			}
 			if vm.State != "running" || vm.Active != nil || (vm.Glass != nil && (vm.Glass.State == "open" || vm.Glass.State == "starting")) {
@@ -634,10 +648,24 @@ func (s *headlessServer) mutate(w http.ResponseWriter, r *http.Request, route st
 		}()
 	}
 }
+func (s *headlessServer) phaseReporter(op *headlessOperation) func(string) {
+	return func(phase string) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if op.State == "running" {
+			op.Phase = phase
+		}
+	}
+}
+
 func (s *headlessServer) spawnGlass(w http.ResponseWriter, vm *headlessVM, req headlessGlassRequest) {
 	op := s.accept(w, "glass_spawn", &vm.ID)
 	vm.Active = &op.ID
 	vm.Glass = &headlessGlass{headlessID("glass_"), "starting", req.Title, req.Width, req.Height}
+	if glassWindowFocusSupported {
+		vm.glassFocus = make(chan struct{}, 1)
+		req.focus = vm.glassFocus
+	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	vm.cancel = cancel
 	done := make(chan struct{})
@@ -654,7 +682,7 @@ func (s *headlessServer) spawnGlass(w http.ResponseWriter, vm *headlessVM, req h
 		op.State = "running"
 		op.Phase = "desktop_starting"
 		s.mu.Unlock()
-		err := s.driver.Glass(ctx, vm.ID, req, func(width, height int) {
+		err := s.driver.Glass(ctx, vm.ID, req, s.phaseReporter(op), func(width, height int) {
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			if ctx.Err() != nil {
@@ -672,6 +700,7 @@ func (s *headlessServer) spawnGlass(w http.ResponseWriter, vm *headlessVM, req h
 		})
 		s.mu.Lock()
 		defer s.mu.Unlock()
+		vm.glassFocus = nil
 		if op.State == "running" {
 			if err == nil {
 				err = headlessFailure("display_failed", "Glass closed before a complete frame was presented")
@@ -683,8 +712,12 @@ func (s *headlessServer) spawnGlass(w http.ResponseWriter, vm *headlessVM, req h
 				err = headlessFailure("timeout", "Desktop startup timed out")
 			}
 			s.finish(op, nil, err, "display_failed")
-			vm.Glass.State = "failed"
-			vm.LastError = op.Error
+			if op.State == "cancelled" {
+				vm.Glass.State = "closed"
+			} else {
+				vm.Glass.State = "failed"
+				vm.LastError = op.Error
+			}
 		} else {
 			vm.Glass.State = "closed"
 			if err != nil {

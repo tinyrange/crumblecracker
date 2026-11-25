@@ -1,4 +1,4 @@
-//go:build darwin || (linux && amd64)
+//go:build darwin || ((linux || windows) && amd64)
 
 package virgl
 
@@ -341,6 +341,15 @@ func newHostRenderer(host *openGLHost) (virtio.GPURenderer, error) {
 		setCapsetHostInfo(renderer.capsets[1].Data, host.gl.renderer, host.gl.uniformBufferAlignment)
 	}
 	return renderer, nil
+}
+
+// ProbeHostRenderer checks the same hardware context and limits as a VM boot.
+func ProbeHostRenderer() error {
+	host, err := newDefaultHost()
+	if err != nil {
+		return err
+	}
+	return host.close()
 }
 
 type openGLContextFactory func() (*hostGL, func(), error)
@@ -885,6 +894,9 @@ func (h *openGLHost) transferFromHost(resource *resource, transfer virtio.GPUTra
 			bytes := resource.data[int(transfer.Offset):int(end)]
 			h.gl.bindBuffer(glArrayBuffer, hostResource.buffer)
 			h.gl.getBufferSubData(glArrayBuffer, int(box.X), len(bytes), glPointer(bytes))
+			if glError := h.gl.getError(); glError != 0 {
+				return fmt.Errorf("VirGL buffer readback GL error %#x", glError)
+			}
 			copy(hostResource.bufferBytes[int(box.X):int(box.X+box.Width)], bytes)
 			return nil
 
@@ -961,7 +973,14 @@ func (h *openGLHost) transferFromHost(resource *resource, transfer virtio.GPUTra
 			}
 
 			packedLayer := rowBytes * uint64(box.Height)
-			packed := make([]byte, int(packedLayer)*int(box.Depth))
+			packedSize := int(packedLayer * uint64(box.Depth))
+			tightlyPacked := stride == rowBytes && (box.Depth == 1 || layerStride == packedLayer)
+			var packed []byte
+			if tightlyPacked {
+				packed = resource.data[int(transfer.Offset) : int(transfer.Offset)+packedSize]
+			} else {
+				packed = make([]byte, packedSize)
+			}
 			attachment := uint32(glColorAttachment0)
 			nativeFormat, ok := describeHostTextureFormat(resource.description.Format)
 			if !ok {
@@ -1022,10 +1041,12 @@ func (h *openGLHost) transferFromHost(resource *resource, transfer virtio.GPUTra
 					if status := h.gl.checkFramebuffer(glReadFramebuffer); status != glFramebufferComplete {
 						return fmt.Errorf("VirGL transfer source framebuffer status %#x", status)
 					}
-					h.gl.finish()
 					destination := uint64(layer) * packedLayer
 					h.gl.readPixels(int32(box.X), int32(box.Y), int32(box.Width), int32(box.Height),
 						format, dataType, glPointer(packed[int(destination):]))
+					if glError := h.gl.getError(); glError != 0 {
+						return fmt.Errorf("VirGL texture readback GL error %#x", glError)
+					}
 				}
 			}
 			if resource.description.Format == virglFormatZ24X8UNorm {
@@ -1040,11 +1061,13 @@ func (h *openGLHost) transferFromHost(resource *resource, transfer virtio.GPUTra
 					binary.LittleEndian.PutUint32(packed[offset:], value>>8|value<<24)
 				}
 			}
-			for layer := uint32(0); layer < box.Depth; layer++ {
-				for row := uint32(0); row < box.Height; row++ {
-					source := int(uint64(layer)*packedLayer + uint64(row)*rowBytes)
-					destination := int(transfer.Offset + uint64(layer)*layerStride + uint64(row)*stride)
-					copy(resource.data[destination:destination+int(rowBytes)], packed[source:source+int(rowBytes)])
+			if !tightlyPacked {
+				for layer := uint32(0); layer < box.Depth; layer++ {
+					for row := uint32(0); row < box.Height; row++ {
+						source := int(uint64(layer)*packedLayer + uint64(row)*rowBytes)
+						destination := int(transfer.Offset + uint64(layer)*layerStride + uint64(row)*stride)
+						copy(resource.data[destination:destination+int(rowBytes)], packed[source:source+int(rowBytes)])
+					}
 				}
 			}
 			return nil
@@ -1093,6 +1116,10 @@ func (h *openGLHost) waitForFence() error {
 }
 
 func (h *openGLHost) readScanout(resource *resource, rect image.Rectangle) ([]byte, int, error) {
+	return h.readScanoutInto(resource, rect, nil)
+}
+
+func (h *openGLHost) readScanoutInto(resource *resource, rect image.Rectangle, pixels []byte) ([]byte, int, error) {
 	var result []byte
 	err := h.dispatch(func() error {
 		width := int(resource.description.Width)
@@ -1105,15 +1132,22 @@ func (h *openGLHost) readScanout(resource *resource, rect image.Rectangle) ([]by
 		if hostResource == nil || hostResource.framebuffer == 0 {
 			return fmt.Errorf("VirGL resource %d is not renderable", resource.description.ID)
 		}
-		raw := make([]byte, rect.Dx()*rect.Dy()*4)
+		size := rect.Dx() * rect.Dy() * 4
+		if cap(pixels) < size {
+			pixels = make([]byte, size)
+		} else {
+			pixels = pixels[:size]
+		}
 		h.framebufferBindingValid = false
 		h.gl.bindFramebuffer(glFramebuffer, hostResource.framebuffer)
-		h.gl.finish()
 		// VirGL's scanout resource stores the guest's top row at GL y=0. Keep
 		// that ordering for the CPU framebuffer, whose rectangles also use a
 		// top-left origin. Reversing these rows produces an upside-down desktop.
-		h.gl.readPixels(int32(rect.Min.X), int32(rect.Min.Y), int32(rect.Dx()), int32(rect.Dy()), glBGRA, glUnsignedByte, glPointer(raw))
-		result = raw
+		h.gl.readPixels(int32(rect.Min.X), int32(rect.Min.Y), int32(rect.Dx()), int32(rect.Dy()), glBGRA, glUnsignedByte, glPointer(pixels))
+		if glError := h.gl.getError(); glError != 0 {
+			return fmt.Errorf("VirGL scanout readback GL error %#x", glError)
+		}
+		result = pixels
 		return nil
 	})
 	if err != nil {

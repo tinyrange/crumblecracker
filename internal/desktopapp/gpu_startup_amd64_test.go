@@ -1,3 +1,5 @@
+//go:build linux || windows
+
 package desktopapp
 
 import (
@@ -7,7 +9,7 @@ import (
 	client "github.com/tinyrange/crumblecracker/internal/protocol"
 )
 
-func TestLinuxExperimentalGPUCheckboxControlsBootRequest(t *testing.T) {
+func TestExperimentalGPUCheckboxControlsBootRequest(t *testing.T) {
 	for _, product := range []struct {
 		name    string
 		mirrors []string
@@ -26,7 +28,7 @@ func TestLinuxExperimentalGPUCheckboxControlsBootRequest(t *testing.T) {
 			viewer.activateStartupControl(startupControlAdvanced)
 			layout := viewer.settingsLayout(960, 760)
 			if layout.gpuCheckbox.Empty() {
-				t.Fatal("Advanced settings did not expose the experimental GPU checkbox on Linux/amd64")
+				t.Fatal("Advanced settings did not expose the experimental GPU checkbox")
 			}
 			control := advancedControlAt(layout.gpuCheckbox.Min.Add(image.Pt(2, 2)), layout)
 			base := client.CreateInstanceRequest{Display: &client.DisplayConfig{Width: 1440, Height: 900}}
