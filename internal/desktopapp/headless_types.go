@@ -98,10 +98,12 @@ type headlessVMRequest struct {
 	Env         map[string]string       `json:"env"`
 }
 type headlessGlassRequest struct {
-	Title   string `json:"title"`
-	Width   int    `json:"width"`
-	Height  int    `json:"height"`
-	Timeout int    `json:"timeout_seconds"`
+	Title       string `json:"title"`
+	Width       int    `json:"width"`
+	Height      int    `json:"height"`
+	Timeout     int    `json:"timeout_seconds"`
+	FocusIfOpen bool   `json:"focus_if_open,omitempty"`
+	focus       <-chan struct{}
 }
 type headlessGlass struct {
 	ID     string `json:"glass_id"`
@@ -122,6 +124,7 @@ type headlessVM struct {
 	ownsResources bool
 	cancel        context.CancelFunc
 	done          chan struct{}
+	glassFocus    chan struct{}
 }
 type headlessVirt struct {
 	Supported  bool                `json:"supported"`
@@ -154,8 +157,8 @@ type headlessAcceptance struct {
 type headlessDriver interface {
 	Check(context.Context) headlessVirt
 	Pull(context.Context, headlessPullRequest, func(headlessTransfer)) (headlessImage, error)
-	Start(context.Context, string, headlessVMRequest) error
-	Glass(context.Context, string, headlessGlassRequest, func(int, int)) error
+	Start(context.Context, string, headlessVMRequest, func(string)) error
+	Glass(context.Context, string, headlessGlassRequest, func(string), func(int, int)) error
 	Stop(context.Context, string) error
 	Status(context.Context, string) (string, error)
 	Shutdown(context.Context) error

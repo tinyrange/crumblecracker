@@ -1,6 +1,7 @@
 package desktopapp
 
 import (
+	"bytes"
 	"context"
 
 	"image"
@@ -176,6 +177,18 @@ func TestParseDisplaySizeRejectsUnusableFramebuffers(t *testing.T) {
 }
 
 func TestGuestDisplayUsesLogicalResolution(t *testing.T) {
+	for _, tc := range []struct {
+		width, height int
+		scale         float32
+	}{
+		{1424, 829, 1},
+		{1780, 1036, 1.25},
+		{2136, 1244, 1.5},
+	} {
+		if got := guestDisplaySize(tc.width, tc.height, tc.scale); got != image.Pt(1424, 829) {
+			t.Errorf("client %dx%d at %.2fx gave guest size %v, want 1424x829", tc.width, tc.height, tc.scale, got)
+		}
+	}
 	if got := guestDisplaySize(2880, 1800, 2); got != image.Pt(1440, 900) {
 		t.Fatalf("guest display size = %v, want logical window resolution", got)
 	}
@@ -255,6 +268,36 @@ func TestDesktopPresentationWaitsForReadyCompleteSettledFrame(t *testing.T) {
 	}
 	if !gate.ready(now.Add(desktopFrameSettleDelay)) {
 		t.Fatal("complete settled desktop frame was not presented")
+	}
+}
+
+func TestHeadlessPresentationKeepsProgressOverPlaceholderFrame(t *testing.T) {
+	now := time.Now()
+	frame := display.FramebufferUpdate{
+		Width: 2, Height: 2, Rect: image.Rect(0, 0, 2, 2), Pixels: make([]byte, 16),
+	}
+	gate := desktopPresentationGate{waitForPaint: true}
+	gate.markGuestReady()
+	gate.observe(frame, now)
+	if gate.ready(now.Add(desktopFrameSettleDelay)) {
+		t.Fatal("a blank desktop placeholder hid startup progress")
+	}
+	if gate.ready(now.Add(desktopPaintGrace)) {
+		t.Fatal("the unpainted framebuffer hid startup progress after the grace period")
+	}
+	frame.Rect = image.Rect(0, 1, 2, 2)
+	frame.Pixels = []byte{5, 10, 15, 0, 10, 15, 20, 0}
+	gate.observe(frame, now.Add(time.Second))
+	if !gate.ready(now.Add(time.Second)) {
+		t.Fatal("painted desktop should appear before the grace period ends")
+	}
+	gate = desktopPresentationGate{waitForPaint: true}
+	gate.markGuestReady()
+	frame.Rect = image.Rect(0, 0, 2, 2)
+	frame.Pixels = bytes.Repeat([]byte{5, 10, 15, 0}, 4)
+	gate.observe(frame, now)
+	if !gate.ready(now.Add(desktopPaintGrace)) {
+		t.Fatal("a painted uniform desktop never became eligible for presentation")
 	}
 }
 

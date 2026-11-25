@@ -24,26 +24,25 @@ type headlessPrepared struct {
 	name  string
 }
 type headlessNativeRequest struct {
-	sharedFolder string
-	ctx          context.Context
-	api          *appruntime.Runtime
-	id           string
-	request      headlessGlassRequest
-	ready        func(int, int)
-	done         chan error
+	ctx     context.Context
+	api     *appruntime.Runtime
+	id      string
+	request headlessGlassRequest
+	start   func(context.Context) error
+	ready   func(int, int)
+	done    chan error
 }
 type headlessRuntimeDriver struct {
-	jupyter       map[string]headlessJupyterResult
-	sharedFolders map[string]string
-	mu            sync.Mutex
-	pullGate      chan struct{}
-	cache         string
-	config        Config
-	pullAPI       *appruntime.Runtime
-	prepared      map[string]headlessPrepared
-	references    map[string]string
-	machines      map[string]*appruntime.Runtime
-	native        chan headlessNativeRequest
+	jupyter    map[string]headlessJupyterResult
+	mu         sync.Mutex
+	pullGate   chan struct{}
+	cache      string
+	config     Config
+	pullAPI    *appruntime.Runtime
+	prepared   map[string]headlessPrepared
+	references map[string]string
+	machines   map[string]*appruntime.Runtime
+	native     chan headlessNativeRequest
 }
 
 func headlessBuildVersion() string { return version.Current().Version }
@@ -305,7 +304,7 @@ func (d *headlessRuntimeDriver) resolveVMConfig(req *headlessVMRequest) error {
 	return err
 }
 
-func (d *headlessRuntimeDriver) Start(ctx context.Context, id string, req headlessVMRequest) error {
+func (d *headlessRuntimeDriver) Start(ctx context.Context, id string, req headlessVMRequest, progress func(string)) error {
 	if !d.Check(ctx).Accessible {
 		return headlessFailure("virt_unavailable", "Virtualization access is unavailable")
 	}
@@ -352,12 +351,9 @@ func (d *headlessRuntimeDriver) Start(ctx context.Context, id string, req headle
 	}
 	d.mu.Lock()
 	d.machines[id] = api
-	if d.sharedFolders == nil {
-		d.sharedFolders = make(map[string]string)
-	}
-	d.sharedFolders[id] = share.Source
 	d.mu.Unlock()
 	if req.CVMFS.Enabled && req.CVMFS.Mirror == "auto" {
+		progress("connecting_cvmfs")
 		c := d.config.CVMFSHostMount
 		probe, err := api.ProbeCVMFSMirrorsContext(ctx, client.CVMFSMirrorProbeRequest{Repo: c.Repo})
 		if err != nil {
@@ -381,16 +377,19 @@ func (d *headlessRuntimeDriver) Start(ctx context.Context, id string, req headle
 		network.PortForwards = []client.PortForward{{Protocol: "tcp", HostAddr: "127.0.0.1", HostPort: req.Jupyter.HostPort, GuestPort: 8888}}
 	}
 	request := client.CreateInstanceRequest{Image: prepared.name, DefaultUser: req.User, InitSystem: "systemd", Shares: shares, PersistentMounts: homes, Network: network, Display: &client.DisplayConfig{Width: uint32(req.Display.Width), Height: uint32(req.Display.Height), Accelerated3D: req.Display.GPU}, KernelModules: appKernelModules(runtimeArchitecture()), Env: env, MemoryMB: req.Memory, CPUs: req.CPUs, AMD64Emulation: d.config.AMD64Emulation, TimeoutSeconds: float64(req.BootTimeout)}
+	progress("booting")
 	_, err = api.CreatePreparedInstance(ctx, id, request, prepared.image.Kernel.Version)
 	if err != nil {
 		return err
 	}
 	if req.Display.GPU && strings.TrimSpace(d.config.ExperimentalGPUDesktopSetup) != "" {
+		progress("configuring_graphics")
 		if err := runGuestRootScript(ctx, api, id, d.config.ExperimentalGPUDesktopSetup); err != nil {
 			return fmt.Errorf("configure accelerated Neurodesk desktop: %w", err)
 		}
 	}
 	if req.Jupyter != nil {
+		progress("starting_jupyter")
 		return d.startJupyter(ctx, id, req.Jupyter.HostPort)
 	}
 	return nil
@@ -400,25 +399,28 @@ func (d *headlessRuntimeDriver) machine(id string) *appruntime.Runtime {
 	defer d.mu.Unlock()
 	return d.machines[id]
 }
-func (d *headlessRuntimeDriver) Glass(ctx context.Context, id string, req headlessGlassRequest, ready func(int, int)) error {
+func (d *headlessRuntimeDriver) Glass(ctx context.Context, id string, req headlessGlassRequest, progress func(string), ready func(int, int)) error {
 	api := d.machine(id)
 	if api == nil {
 		return headlessFailure("invalid_state", "VM is unavailable")
 	}
-	response, err := api.RunInContext(ctx, id, client.RunRequest{Command: []string{"systemctl", "start", "neurodesktop-glass.service"}, User: "root"})
-	if err != nil {
-		return err
+	native := headlessNativeRequest{
+		ctx: ctx, api: api, id: id, request: req, ready: ready, done: make(chan error, 1),
+		start: func(ctx context.Context) error {
+			response, err := api.RunInContext(ctx, id, client.RunRequest{Command: []string{"systemctl", "start", "neurodesktop-glass.service"}, User: "root"})
+			if err != nil {
+				return err
+			}
+			if response.ExitCode != 0 {
+				return headlessFailure("desktop_start_failed", "Guest desktop service could not start")
+			}
+			if err := waitForDesktop(ctx, api, id); err != nil {
+				return err
+			}
+			progress("desktop_presenting")
+			return nil
+		},
 	}
-	if response.ExitCode != 0 {
-		return headlessFailure("desktop_start_failed", "Guest desktop service could not start")
-	}
-	if err := waitForDesktop(ctx, api, id); err != nil {
-		return err
-	}
-	d.mu.Lock()
-	sharedFolder := d.sharedFolders[id]
-	d.mu.Unlock()
-	native := headlessNativeRequest{sharedFolder: sharedFolder, ctx: ctx, api: api, id: id, request: req, ready: ready, done: make(chan error, 1)}
 	select {
 	case d.native <- native:
 	case <-ctx.Done():
@@ -480,7 +482,6 @@ func (d *headlessRuntimeDriver) Stop(ctx context.Context, id string) error {
 	}
 	d.mu.Lock()
 	delete(d.machines, id)
-	delete(d.sharedFolders, id)
 	delete(d.jupyter, id)
 	d.mu.Unlock()
 	return nil

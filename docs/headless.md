@@ -58,6 +58,8 @@ use a new key. IDs and replay/operation records are scoped to the child lifetime
    native window on the platform UI thread. Its operation succeeds after a desktop
    frame has actually been presented. It returns a native-window session, not a
    Jupyter URL. Poll VM status for window closure or guest failure.
+   When `/v1/info` advertises `glass_focus`, send `"focus_if_open":true` to
+   restore and raise an existing window. The operation returns its session ID.
 6. Closing Glass detaches the window and releases its frame/input state. The VM
    remains running; another spawn reopens the same desktop. Stop via
    `POST /v1/vms/{vm_id}/stop`, or shut down the entire child using

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +20,8 @@ type headlessFake struct {
 	shares               []headlessShare
 	gpu                  bool
 	closeGlass           chan struct{}
+	focusedGlass         chan struct{}
+	cancelGlass          atomic.Bool
 	failStop             atomic.Bool
 }
 
@@ -32,7 +35,7 @@ func (f *headlessFake) Pull(ctx context.Context, r headlessPullRequest, report f
 	report(headlessTransfer{ID: "layer1", Kind: "image_layer", Name: "layer1", State: "downloading", Total: headlessPtr(int64(100)), Completed: 50, NetworkBytes: 50, Branch: "image", PlanningComplete: true})
 	return headlessImage{ID: "img_test", Reference: r.Reference, Kernel: headlessKernel{ID: "kernel_test"}}, nil
 }
-func (f *headlessFake) Start(ctx context.Context, id string, r headlessVMRequest) error {
+func (f *headlessFake) Start(ctx context.Context, id string, r headlessVMRequest, progress func(string)) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.starts++
@@ -41,13 +44,21 @@ func (f *headlessFake) Start(ctx context.Context, id string, r headlessVMRequest
 	f.gpu = r.Display.GPU
 	return nil
 }
-func (f *headlessFake) Glass(ctx context.Context, id string, r headlessGlassRequest, ready func(int, int)) error {
-	ready(r.Width, r.Height)
-	select {
-	case <-ctx.Done():
-	case <-f.closeGlass:
+func (f *headlessFake) Glass(ctx context.Context, id string, r headlessGlassRequest, progress func(string), ready func(int, int)) error {
+	if f.cancelGlass.Swap(false) {
+		return context.Canceled
 	}
-	return nil
+	ready(r.Width, r.Height)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-f.closeGlass:
+			return nil
+		case <-r.focus:
+			f.focusedGlass <- struct{}{}
+		}
+	}
 }
 func (f *headlessFake) Stop(ctx context.Context, id string) error {
 	f.mu.Lock()
@@ -71,7 +82,7 @@ func testHeadlessServer(t *testing.T) (*headlessServer, *headlessFake) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fake := &headlessFake{closeGlass: make(chan struct{}, 1)}
+	fake := &headlessFake{closeGlass: make(chan struct{}, 1), focusedGlass: make(chan struct{}, 1)}
 	s := newHeadlessServer(config, t.TempDir(), "127.0.0.1:49152", "test-secret", fake)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -206,6 +217,16 @@ func TestHeadlessIdempotencyAndNativeLifecycle(t *testing.T) {
 		t.Errorf("guest options lost: %v %v", f.env, f.shares)
 	}
 	f.mu.Unlock()
+	f.cancelGlass.Store(true)
+	cancelled := waitHeadlessOperation(t, s, testHeadlessRequest(s, "POST", "/v1/vms/"+id+"/glass", `{}`, ""))
+	if cancelled.State != "cancelled" {
+		t.Fatalf("close before first frame: %+v", cancelled)
+	}
+	s.mu.Lock()
+	if vm := s.vms[id]; vm.State != "running" || vm.Glass.State != "closed" || vm.LastError != nil {
+		t.Error("closing the loading window did not leave the VM running with Glass detached")
+	}
+	s.mu.Unlock()
 	key := "11111111-1111-4111-8111-111111111111"
 	request := testHeadlessRequest(s, "POST", "/v1/vms/"+id+"/glass", `{}`, key)
 	op := waitHeadlessOperation(t, s, request)
@@ -221,6 +242,17 @@ func TestHeadlessIdempotencyAndNativeLifecycle(t *testing.T) {
 	}
 	if w := testHeadlessRequest(s, "POST", "/v1/vms/"+id+"/glass", `{}`, ""); w.Code != 409 {
 		t.Fatalf("second window: %d", w.Code)
+	}
+	if glassWindowFocusSupported {
+		focused := waitHeadlessOperation(t, s, testHeadlessRequest(s, "POST", "/v1/vms/"+id+"/glass", `{"focus_if_open":true}`, ""))
+		if focused.State != "succeeded" || !reflect.DeepEqual(focused.Result, op.Result) {
+			t.Fatalf("focus did not return the existing window: %+v", focused)
+		}
+		select {
+		case <-f.focusedGlass:
+		case <-time.After(time.Second):
+			t.Fatal("focus did not reach the existing Glass window")
+		}
 	}
 	f.closeGlass <- struct{}{}
 	s.mu.Lock()

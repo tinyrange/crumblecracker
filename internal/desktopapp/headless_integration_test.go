@@ -65,7 +65,7 @@ func TestHeadlessGuestIntegration(t *testing.T) {
 		}
 	})
 	for pass := 0; pass < 2; pass++ {
-		if err := driver.Start(ctx, "vm_integration", req); err != nil {
+		if err := driver.Start(ctx, "vm_integration", req, func(string) {}); err != nil {
 			t.Fatal(err)
 		}
 		api := driver.machine("vm_integration")

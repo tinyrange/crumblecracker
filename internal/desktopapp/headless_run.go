@@ -128,11 +128,24 @@ func openHeadlessDisplay(request headlessNativeRequest) error {
 	}
 	win, err := window.New(request.request.Title, request.request.Width, request.request.Height, true)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "NeurodeskAppX: opening Glass: %v\n", err)
 		return headlessFailure("display_unavailable", "Cannot open a native window in this graphical session")
 	}
-	viewer := &displayViewer{chromeEnabled: true, window: win, session: session, guestCursor: newGuestCursorHost(), keysDown: make(map[window.Key]bool), updateConsumedKeys: make(map[window.Key]bool), parentContext: request.ctx, settings: startupOptions{SharedFolder: request.sharedFolder, DisplayWidth: request.request.Width, DisplayHeight: request.request.Height}, startup: initialStartupProgress(), onPresentation: request.ready}
-	if chrome, ok := win.(window.IntegratedTitleBarSupport); ok && chrome.SetIntegratedTitleBar(true) {
-		viewer.chromeInsets = chrome.IntegratedTitleBarInsets()
+	showWindow, releaseWindow := prepareGlassWindow()
+	defer releaseWindow()
+	viewer := &displayViewer{
+		window:             win,
+		guestCursor:        newGuestCursorHost(),
+		keysDown:           make(map[window.Key]bool),
+		updateConsumedKeys: make(map[window.Key]bool),
+		parentContext:      request.ctx,
+		settings:           startupOptions{DisplayWidth: request.request.Width, DisplayHeight: request.request.Height},
+		presentation:       desktopPresentationGate{waitForPaint: true},
+		onPresentation:     request.ready,
+		glassStartup:       true,
+		startDone:          make(chan displayStartResult, 1),
+		focusEvents:        request.request.focus,
+		onFocus:            showWindow,
 	}
 	if err := viewer.init(); err != nil {
 		if viewer.gl != nil {
@@ -159,8 +172,36 @@ func openHeadlessDisplay(request headlessNativeRequest) error {
 			_ = viewer.sendPointer(x, y, 0)
 		}
 	}()
-	viewer.presentation.markGuestReady()
-	return viewer.loop(request.ctx)
+	startupCtx, cancelStartup := context.WithCancel(request.ctx)
+	var startup sync.WaitGroup
+	defer func() {
+		cancelStartup()
+		startup.Wait()
+	}()
+	viewer.onLoadingPresentation = func() {
+		showWindow()
+		width, height := win.BackingSize()
+		size := viewer.guestDisplaySize(width, height)
+		startup.Go(func() {
+			if runtime.GOOS == "windows" && width > 0 && height > 0 && startupCtx.Err() == nil {
+				guestWidth, guestHeight := session.Size()
+				if size.X != guestWidth || size.Y != guestHeight {
+					if err := session.Resize(size.X, size.Y); err != nil {
+						fmt.Fprintf(os.Stderr, "NeurodeskAppX: fit Glass to client area: %v\n", err)
+					}
+				}
+			}
+			err := request.start(startupCtx)
+			viewer.startDone <- displayStartResult{started: displayStarted{Session: session}, err: err}
+		})
+	}
+	if err := viewer.loop(request.ctx); err != nil {
+		return err
+	}
+	if !viewer.desktopVisible {
+		return context.Canceled
+	}
+	return nil
 }
 func (s *headlessServer) monitorVMs() {
 	ticker := time.NewTicker(500 * time.Millisecond)
