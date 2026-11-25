@@ -87,7 +87,7 @@ if [ "$(systemctl show --property=LoadState --value neurodesktop-prepare.service
 	install -d -m 0700 -o jovyan -g "$group" /run/user/1000 "$runtime" "$runtime/jupyter"
 	for dir in "$state" /home/jovyan/.local/share/jupyter /home/jovyan/.local/share/code-server/extensions; do
 		if [ ! -d "$dir" ]; then
-			install -d -m 0700 -o jovyan -g "$group" "$dir"
+			runuser -u jovyan -- mkdir -m 0700 -p "$dir"
 		fi
 	done
 	if [ ! -e "$state/jupyter.log" ]; then
