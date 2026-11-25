@@ -89,7 +89,12 @@ func (d *headlessRuntimeDriver) Diagnostics(ctx context.Context, id string) (map
 	if err != nil {
 		return nil, err
 	}
-	graphics, err := api.RunInContext(ctx, id, client.RunRequest{User: "jovyan", TimeoutSeconds: 10, Command: []string{"env", "DISPLAY=:0", "XAUTHORITY=/run/user/1000/neurodesktop/Xauthority", "glxinfo", "-B"}})
+	graphics, err := api.RunInContext(ctx, id, client.RunRequest{User: "jovyan", TimeoutSeconds: 10, Command: []string{"sh", "-c", `
+if command -v glxinfo >/dev/null; then
+	exec env DISPLAY=:0 XAUTHORITY=/run/user/1000/neurodesktop/Xauthority glxinfo -B
+fi
+exec grep -E 'glamor X acceleration enabled on ' /var/log/neurodesktop-glass-Xorg.log
+`}})
 	if err != nil {
 		return nil, err
 	}
