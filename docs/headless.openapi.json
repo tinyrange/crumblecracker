@@ -403,7 +403,7 @@
         "additionalProperties": false,
         "properties": {
           "gpu_acceleration": {
-            "default": false,
+            "description": "Defaults to true when the backend can initialize compatible host GPU acceleration. Set false to disable it.",
             "type": "boolean"
           },
           "height": {

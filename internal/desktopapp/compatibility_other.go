@@ -9,7 +9,7 @@ func platformCompatibilityError() error {
 }
 
 func platformExperimentalGPUAccelerationAvailable() bool {
-	return runtime.GOOS == "linux" && runtime.GOARCH == "amd64"
+	return (runtime.GOOS == "linux" || runtime.GOOS == "windows") && runtime.GOARCH == "amd64"
 }
 
 func platformNativeGPUScanoutAvailable() bool {

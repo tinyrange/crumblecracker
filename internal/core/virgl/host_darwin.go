@@ -35,6 +35,8 @@ func NewHostRendererWithShareGroup(shareContext, sharePixelFormat uintptr) (virt
 
 func newReplayHost() (*openGLHost, error) { return newDarwinHost() }
 
+func newDefaultHost() (*openGLHost, error) { return newDarwinHost() }
+
 func newDarwinHost(shareGroup ...uintptr) (*openGLHost, error) {
 	var shareContext, sharePixelFormat uintptr
 	if len(shareGroup) > 0 {

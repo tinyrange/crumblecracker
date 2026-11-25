@@ -51,7 +51,6 @@ systemctl unset-environment \
     APPTAINERENV_GALLIUM_DRIVER \
     APPTAINERENV_VTEST_SOCKET_NAME
 systemctl set-environment NEURODESKTOP_GPU_ACCELERATION=1
-systemctl restart --no-block neurodesktop-glass.service
 `
 
 var defaultCVMFSMirrors = []string{

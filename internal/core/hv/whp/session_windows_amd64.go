@@ -16,6 +16,7 @@ import (
 	"github.com/tinyrange/crumblecracker/internal/core/amd64vm"
 	managedagent "github.com/tinyrange/crumblecracker/internal/core/managed/agent"
 	managedsession "github.com/tinyrange/crumblecracker/internal/core/managed/session"
+	"github.com/tinyrange/crumblecracker/internal/core/virgl"
 	"github.com/tinyrange/crumblecracker/internal/core/virtio"
 	"github.com/tinyrange/crumblecracker/internal/core/vmruntime"
 	"github.com/tinyrange/crumblecracker/internal/protocol"
@@ -46,6 +47,7 @@ type ManagedSessionOptions struct {
 	RestoreSnapshot string
 	DisplayWidth    uint32
 	DisplayHeight   uint32
+	Accelerated3D   bool
 }
 
 const (
@@ -85,7 +87,7 @@ func StartManagedSessionWithNetOptions(ctx context.Context, kernel []byte, initr
 	}
 
 	vsock := virtio.NewVsock(amd64vm.VsockBase, amd64vm.VsockSize, amd64vm.VsockIRQ, vmruntime.GuestCID, backend)
-	desktop, displayDevices, clipboardListener, displayListener, err := newManagedDesktop(backend, opts.DisplayWidth, opts.DisplayHeight)
+	desktop, displayDevices, clipboardListener, displayListener, err := newManagedDesktop(backend, opts)
 	if err != nil {
 		_ = listener.Close()
 		vsock.Close()
@@ -112,6 +114,9 @@ func StartManagedSessionWithNetOptions(ctx context.Context, kernel []byte, initr
 	}
 	vm, platform, serialOut, err := prepareManagedVM(kernel, initrd, memoryMB, cpus, dmesg, fsdevs, vsock, netdev, displayDevices, strings.TrimSpace(opts.SnapshotDir), serialWriter)
 	if err != nil {
+		if desktop != nil {
+			err = errors.Join(err, desktop.GPU.Close())
+		}
 		closeManagedDisplayListeners(clipboardListener, displayListener)
 		_ = listener.Close()
 		vsock.Close()
@@ -131,6 +136,9 @@ func StartManagedSessionWithNetOptions(ctx context.Context, kernel []byte, initr
 	doneCh := make(chan error, 1)
 	go func() {
 		err := runManagedExecVM(runCtx, vm, platform, serialOut)
+		if desktop != nil {
+			err = errors.Join(err, desktop.GPU.Close())
+		}
 		platform.Close()
 		err = errors.Join(err, vm.Close())
 		doneCh <- err
@@ -236,7 +244,8 @@ func StartManagedSessionWithNetOptions(ctx context.Context, kernel []byte, initr
 	}, nil
 }
 
-func newManagedDesktop(backend *virtio.SimpleVsockBackend, width, height uint32) (*virtio.Desktop, []virtio.MMIODevice, virtio.VsockListener, virtio.VsockListener, error) {
+func newManagedDesktop(backend *virtio.SimpleVsockBackend, opts ManagedSessionOptions) (*virtio.Desktop, []virtio.MMIODevice, virtio.VsockListener, virtio.VsockListener, error) {
+	width, height := opts.DisplayWidth, opts.DisplayHeight
 	if width == 0 && height == 0 {
 		return nil, nil, nil, nil, nil
 	}
@@ -244,7 +253,6 @@ func newManagedDesktop(backend *virtio.SimpleVsockBackend, width, height uint32)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("create display: %w", err)
 	}
-	gpu := virtio.NewGPU(amd64vm.GPUBase, amd64vm.GPUSize, amd64vm.GPUIRQ, framebuffer)
 	keyboard := virtio.NewKeyboardInput(amd64vm.KeyboardBase, amd64vm.KeyboardSize, amd64vm.KeyboardIRQ)
 	pointer := virtio.NewAbsolutePointerInput(amd64vm.PointerBase, amd64vm.PointerSize, amd64vm.PointerIRQ, width, height)
 	relativePointer := virtio.NewRelativePointerInput(amd64vm.RelativePointerBase, amd64vm.RelativePointerSize, amd64vm.RelativePointerIRQ)
@@ -258,6 +266,15 @@ func newManagedDesktop(backend *virtio.SimpleVsockBackend, width, height uint32)
 		_ = clipboardListener.Close()
 		return nil, nil, nil, nil, fmt.Errorf("listen for guest display bridge: %w", err)
 	}
+	var renderer virtio.GPURenderer
+	if opts.Accelerated3D {
+		renderer, err = virgl.NewHostRenderer()
+		if err != nil {
+			closeManagedDisplayListeners(clipboardListener, displayListener)
+			return nil, nil, nil, nil, fmt.Errorf("create experimental VirGL renderer: %w", err)
+		}
+	}
+	gpu := virtio.NewGPUWithRenderer(amd64vm.GPUBase, amd64vm.GPUSize, amd64vm.GPUIRQ, framebuffer, renderer)
 	desktop := &virtio.Desktop{
 		Framebuffer:     framebuffer,
 		GPU:             gpu,

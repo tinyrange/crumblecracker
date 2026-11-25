@@ -382,10 +382,18 @@ func (d *headlessRuntimeDriver) Start(ctx context.Context, id string, req headle
 	}
 	request := client.CreateInstanceRequest{Image: prepared.name, DefaultUser: req.User, InitSystem: "systemd", Shares: shares, PersistentMounts: homes, Network: network, Display: &client.DisplayConfig{Width: uint32(req.Display.Width), Height: uint32(req.Display.Height), Accelerated3D: req.Display.GPU}, KernelModules: appKernelModules(runtimeArchitecture()), Env: env, MemoryMB: req.Memory, CPUs: req.CPUs, AMD64Emulation: d.config.AMD64Emulation, TimeoutSeconds: float64(req.BootTimeout)}
 	_, err = api.CreatePreparedInstance(ctx, id, request, prepared.image.Kernel.Version)
-	if err == nil && req.Jupyter != nil {
-		err = d.startJupyter(ctx, id, req.Jupyter.HostPort)
+	if err != nil {
+		return err
 	}
-	return err
+	if req.Display.GPU && strings.TrimSpace(d.config.ExperimentalGPUDesktopSetup) != "" {
+		if err := runGuestRootScript(ctx, api, id, d.config.ExperimentalGPUDesktopSetup); err != nil {
+			return fmt.Errorf("configure accelerated Neurodesk desktop: %w", err)
+		}
+	}
+	if req.Jupyter != nil {
+		return d.startJupyter(ctx, id, req.Jupyter.HostPort)
+	}
+	return nil
 }
 func (d *headlessRuntimeDriver) machine(id string) *appruntime.Runtime {
 	d.mu.Lock()

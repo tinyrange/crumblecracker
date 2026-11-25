@@ -1,4 +1,4 @@
-//go:build !darwin && (!linux || !amd64)
+//go:build !darwin && ((!linux && !windows) || !amd64)
 
 package virgl
 
@@ -8,8 +8,12 @@ import (
 	"github.com/tinyrange/crumblecracker/internal/core/virtio"
 )
 
+func ProbeHostRenderer() error {
+	return errors.New("VirGL host rendering is available on Darwin, Linux/amd64 and Windows/amd64")
+}
+
 func NewHostRenderer() (virtio.GPURenderer, error) {
-	return nil, errors.New("first-party VirGL host rendering is currently available on Darwin and Linux/amd64 only")
+	return nil, ProbeHostRenderer()
 }
 
 func NewHostRendererWithShareGroup(uintptr, uintptr) (virtio.GPURenderer, error) {

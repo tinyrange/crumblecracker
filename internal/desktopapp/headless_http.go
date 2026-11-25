@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tinyrange/crumblecracker/internal/core/oci"
 	"io"
 	"mime"
 	"net/http"
@@ -19,6 +18,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/tinyrange/crumblecracker/internal/core/oci"
+	"github.com/tinyrange/crumblecracker/internal/core/virgl"
 )
 
 type headlessReplay struct {
@@ -50,7 +52,9 @@ type headlessServer struct {
 
 func newHeadlessServer(config Config, storage, host, token string, driver headlessDriver) *headlessServer {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &headlessServer{config: config, defaults: headlessDefaults(config, storage), host: host, token: token, driver: driver, operations: map[string]*headlessOperation{}, trackers: map[string]*headlessProgressTracker{}, images: map[string]headlessImage{}, vms: map[string]*headlessVM{}, replays: map[string]*headlessReplay{}, ctx: ctx, cancel: cancel, shutdownGate: make(chan struct{}, 1), stopped: make(chan struct{})}
+	defaults := headlessDefaults(config, storage)
+	defaults.Display.GPU = config.ExperimentalGPUAcceleration && headlessGPUSupported() && virgl.ProbeHostRenderer() == nil
+	return &headlessServer{config: config, defaults: defaults, host: host, token: token, driver: driver, operations: map[string]*headlessOperation{}, trackers: map[string]*headlessProgressTracker{}, images: map[string]headlessImage{}, vms: map[string]*headlessVM{}, replays: map[string]*headlessReplay{}, ctx: ctx, cancel: cancel, shutdownGate: make(chan struct{}, 1), stopped: make(chan struct{})}
 }
 func headlessID(prefix string) string {
 	var b [16]byte
@@ -463,6 +467,7 @@ func (s *headlessServer) mutate(w http.ResponseWriter, r *http.Request, route st
 		}()
 	case "start":
 		req := headlessDefaults(s.config, s.defaults.Storage.HostPath)
+		req.Display.GPU = s.defaults.Display.GPU
 		if err := headlessDecode(body, &req); err != nil {
 			fail(err)
 			return

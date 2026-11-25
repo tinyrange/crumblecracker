@@ -50,7 +50,7 @@ var eglDisplays = struct {
 }{users: make(map[uintptr]int)}
 
 func NewHostRenderer() (virtio.GPURenderer, error) {
-	host, err := newLinuxHost(false)
+	host, err := newDefaultHost()
 	if err != nil {
 		return nil, err
 	}
@@ -67,6 +67,8 @@ func NewHostRendererWithShareGroup(shareContext, sharePixelFormat uintptr) (virt
 func newReplayHost() (*openGLHost, error) {
 	return newLinuxHost(os.Getenv("LIBGL_ALWAYS_SOFTWARE") == "1")
 }
+
+func newDefaultHost() (*openGLHost, error) { return newLinuxHost(false) }
 
 func newLinuxHost(software bool) (*openGLHost, error) {
 	return newOpenGLHost(func() (*hostGL, func(), error) {
@@ -269,7 +271,7 @@ func openEGLContext(node string) (_ *hostGL, _ func(), err error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := checkLinuxGL(gl, resolve, node == ""); err != nil {
+	if err := checkHostGL(gl, resolve, node == ""); err != nil {
 		return nil, nil, err
 	}
 	return gl, cleanup, nil
@@ -300,75 +302,4 @@ func releaseEGLDisplay(egl eglAPI, display uintptr) {
 		egl.terminate(display)
 		delete(eglDisplays.users, display)
 	}
-}
-
-func checkLinuxGL(gl *hostGL, resolve func(string) (uintptr, error), allowSoftware bool) error {
-	getStringAddr, err := resolve("glGetString")
-	if err != nil {
-		return err
-	}
-	getIntegerAddr, err := resolve("glGetIntegerv")
-	if err != nil {
-		return err
-	}
-	var getString func(uint32) string
-	var getInteger func(uint32, *int32)
-	purego.RegisterFunc(&getString, getStringAddr)
-	purego.RegisterFunc(&getInteger, getIntegerAddr)
-
-	gl.renderer = getString(0x1f01) // GL_RENDERER
-	if gl.renderer == "" {
-		return errors.New("current OpenGL context returned no renderer identity")
-	}
-	renderer := strings.ToLower(gl.renderer)
-	if !allowSoftware && (strings.Contains(renderer, "llvmpipe") || strings.Contains(renderer, "softpipe") ||
-		strings.Contains(renderer, "swrast") || strings.Contains(renderer, "software rasterizer")) {
-		return fmt.Errorf("hardware OpenGL required, got %q", gl.renderer)
-	}
-
-	// Keep the existing VirGL profile bounded by the selected driver.
-	for _, limit := range []struct {
-		name string
-		enum uint32
-		min  int32
-	}{
-		{"GL_MAX_TEXTURE_SIZE", 0x0d33, capsetMaxTexture2D},
-		{"GL_MAX_CUBE_MAP_TEXTURE_SIZE", 0x851c, capsetMaxTexture2D},
-		{"GL_MAX_3D_TEXTURE_SIZE", 0x8073, capsetMaxTexture3D},
-		{"GL_MAX_ARRAY_TEXTURE_LAYERS", 0x88ff, capsetMaxArrayLayers},
-		{"GL_MAX_TEXTURE_BUFFER_SIZE", 0x8c2b, capsetMaxTextureBuffer},
-		{"GL_MAX_UNIFORM_BLOCK_SIZE", 0x8a30, capsetMaxUniformBlockSize},
-		{"GL_MAX_DRAW_BUFFERS", 0x8824, 8},
-		{"GL_MAX_COLOR_ATTACHMENTS", 0x8cdf, 8},
-		{"GL_MAX_SAMPLES", 0x8d57, 4},
-		{"GL_MAX_VIEWPORTS", 0x825b, 16},
-	} {
-		var value int32
-		getInteger(limit.enum, &value)
-		if value < limit.min {
-			return fmt.Errorf("%s is %d on %q, VirGL requires at least %d", limit.name, value, gl.renderer, limit.min)
-		}
-	}
-	var anisotropy float32
-	gl.getFloatv(0x84ff, &anisotropy) // GL_MAX_TEXTURE_MAX_ANISOTROPY
-	if anisotropy < capsetMaxAnisotropy {
-		return fmt.Errorf("anisotropic filtering limit is %g on %q, VirGL requires %d", anisotropy, gl.renderer, capsetMaxAnisotropy)
-	}
-	// The default GL_FIXED_ONLY clamps negative signed-normalized texels
-	// during glReadPixels. Guest transfers need the signed values.
-	clampColorAddr, err := resolve("glClampColor")
-	if err != nil {
-		return err
-	}
-	var clampColor func(uint32, uint32)
-	purego.RegisterFunc(&clampColor, clampColorAddr)
-	clampColor(0x891c, 0) // GL_CLAMP_READ_COLOR, GL_FALSE
-
-	var alignment int32
-	getInteger(0x8a34, &alignment) // GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT
-	if code := gl.getError(); code != 0 || alignment <= 0 {
-		return fmt.Errorf("invalid OpenGL limits on %q (alignment %d, GL error %#x)", gl.renderer, alignment, code)
-	}
-	gl.uniformBufferAlignment = uint32(alignment)
-	return nil
 }

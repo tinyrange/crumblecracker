@@ -1,4 +1,4 @@
-//go:build darwin || (linux && amd64)
+//go:build darwin || ((linux || windows) && amd64)
 
 package virgl
 
@@ -341,6 +341,15 @@ func newHostRenderer(host *openGLHost) (virtio.GPURenderer, error) {
 		setCapsetHostInfo(renderer.capsets[1].Data, host.gl.renderer, host.gl.uniformBufferAlignment)
 	}
 	return renderer, nil
+}
+
+// ProbeHostRenderer checks the same hardware context and limits as a VM boot.
+func ProbeHostRenderer() error {
+	host, err := newDefaultHost()
+	if err != nil {
+		return err
+	}
+	return host.close()
 }
 
 type openGLContextFactory func() (*hostGL, func(), error)

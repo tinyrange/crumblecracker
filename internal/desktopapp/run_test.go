@@ -119,18 +119,27 @@ func TestPersistentDesktopHomeMapsEntriesToSessionUser(t *testing.T) {
 	}
 }
 
-func TestExperimentalGPUChoicePersists(t *testing.T) {
+func TestExperimentalGPUDefaultAndSavedChoices(t *testing.T) {
 	dir := t.TempDir()
-	want := appSettings{FirstRunComplete: true, GPUAcceleration: true}
-	if err := saveAppSettings(dir, want); err != nil {
+	settings, err := loadAppSettingsFromDir(dir)
+	if err != nil || !settings.GPUAcceleration {
+		t.Fatalf("a new settings directory should enable GPU acceleration, got %+v, %v", settings, err)
+	}
+	for _, enabled := range []bool{false, true} {
+		if err := saveAppSettings(dir, appSettings{FirstRunComplete: true, GPUAcceleration: enabled}); err != nil {
+			t.Fatal(err)
+		}
+		settings, err = loadAppSettingsFromDir(dir)
+		if err != nil || settings.GPUAcceleration != enabled {
+			t.Fatalf("saved GPU acceleration %t, got %+v, %v", enabled, settings, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte(`{"first_run_complete":true}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loadAppSettingsFromDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !got.GPUAcceleration {
-		t.Fatal("saved experimental GPU choice was not restored")
+	settings, err = loadAppSettingsFromDir(dir)
+	if err != nil || settings.GPUAcceleration {
+		t.Fatalf("a legacy settings file without the GPU field should remain off, got %+v, %v", settings, err)
 	}
 }
 

@@ -17,6 +17,7 @@ type headlessFake struct {
 	pulls, starts, stops int
 	env                  map[string]string
 	shares               []headlessShare
+	gpu                  bool
 	closeGlass           chan struct{}
 	failStop             atomic.Bool
 }
@@ -37,6 +38,7 @@ func (f *headlessFake) Start(ctx context.Context, id string, r headlessVMRequest
 	f.starts++
 	f.env = r.Env
 	f.shares = r.Shares
+	f.gpu = r.Display.GPU
 	return nil
 }
 func (f *headlessFake) Glass(ctx context.Context, id string, r headlessGlassRequest, ready func(int, int)) error {
@@ -136,6 +138,39 @@ func startHeadlessTestVM(t *testing.T, s *headlessServer) string {
 	}
 	return *start.Resource
 }
+
+func TestHeadlessGPUDefaultAndOptOut(t *testing.T) {
+	if !headlessGPUSupported() {
+		t.Skip("host platform does not support GPU acceleration")
+	}
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"default", `{"image_id":"img_test","display":{"width":1280}}`, true},
+		{"opt-out", `{"image_id":"img_test","display":{"gpu_acceleration":false}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, fake := testHeadlessServer(t)
+			s.defaults.Display.GPU = true
+			pull := waitHeadlessOperation(t, s, testHeadlessRequest(s, "POST", "/v1/images/pull", `{"reference":"example.org/image:tag"}`, ""))
+			if pull.State != "succeeded" {
+				t.Fatalf("pull: %+v", pull)
+			}
+			start := waitHeadlessOperation(t, s, testHeadlessRequest(s, "POST", "/v1/vms", tc.body, ""))
+			if start.State != "succeeded" {
+				t.Fatalf("start: %+v", start)
+			}
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			if fake.gpu != tc.want {
+				t.Fatalf("boot requested acceleration %t, want %t", fake.gpu, tc.want)
+			}
+		})
+	}
+}
+
 func TestHeadlessRoutesAuthenticationAndValidation(t *testing.T) {
 	s, _ := testHeadlessServer(t)
 	for _, tc := range []struct {
