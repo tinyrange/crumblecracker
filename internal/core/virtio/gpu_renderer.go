@@ -72,6 +72,12 @@ type GPUNativeScanoutRenderer interface {
 	NativeScanout(resourceID uint32, rect image.Rectangle) (GPUNativeFrame, bool, error)
 }
 
+// GPUReusableScanoutRenderer reads a scanout and may use caller-owned storage.
+// The returned pixels belong to the caller.
+type GPUReusableScanoutRenderer interface {
+	ReadScanoutInto(resourceID uint32, rect image.Rectangle, pixels []byte) ([]byte, int, error)
+}
+
 // GPURenderer owns the host implementation of an advertised virtio-gpu 3D
 // command protocol. Calls are ordered exactly as they arrive on controlq.
 // Backends with asynchronous host work implement GPUFenceWaiter.

@@ -8,7 +8,10 @@ import (
 	"github.com/tinyrange/crumblecracker/internal/core/virtio"
 )
 
-const maxResourceBytes = 256 << 20
+const (
+	maxResourceBytes         = 256 << 20
+	maxRetainedTransferBytes = 64 << 20
+)
 
 type context struct {
 	id        uint32
@@ -39,14 +42,19 @@ type bufferTransferQueuer interface {
 	queueBufferTransfer(resource *resource, transfer virtio.GPUTransfer3D) error
 }
 
+type scanoutReadbackHost interface {
+	readScanoutInto(resource *resource, rect image.Rectangle, pixels []byte) ([]byte, int, error)
+}
+
 // Renderer is cc's first-party implementation of the VirGL Gallium command
 // protocol. It validates protocol objects and forwards rendering to the host backend.
 type Renderer struct {
-	mu        sync.Mutex
-	capsets   []virtio.GPUCapset
-	contexts  map[uint32]*context
-	resources map[uint32]*resource
-	host      hostBackend
+	mu             sync.Mutex
+	capsets        []virtio.GPUCapset
+	contexts       map[uint32]*context
+	resources      map[uint32]*resource
+	host           hostBackend
+	transferPixels []byte
 }
 
 func NewRenderer(host hostBackend) *Renderer {
@@ -339,9 +347,18 @@ func (r *Renderer) TransferFromHost(transfer virtio.GPUTransfer3D) error {
 	if transfer.Backing == nil {
 		return fmt.Errorf("VirGL resource %d has no guest backing", transfer.ResourceID)
 	}
-	data, normalized, err := stageTransferFromHost(target.description, transfer)
+	size, normalized, err := prepareTransferFromHost(target.description, transfer)
 	if err != nil {
 		return err
+	}
+	data := r.transferPixels
+	if cap(data) < size {
+		data = make([]byte, size)
+	} else {
+		data = data[:size]
+	}
+	if size <= maxRetainedTransferBytes {
+		r.transferPixels = data
 	}
 	staged := &resource{description: target.description, data: data}
 	if err := r.host.transferFromHost(staged, normalized); err != nil {
@@ -350,38 +367,32 @@ func (r *Renderer) TransferFromHost(transfer virtio.GPUTransfer3D) error {
 	return commitTransferFromHost(target.description, transfer, staged.data)
 }
 
-func stageTransferFromHost(description virtio.GPUResource3D, transfer virtio.GPUTransfer3D) ([]byte, virtio.GPUTransfer3D, error) {
-	size, err := transferDataSize(description, transfer)
-	if err != nil {
-		return nil, transfer, err
-	}
-	end := transfer.Offset + size
-	if end < transfer.Offset || end > transfer.Backing.Size() {
-		return nil, transfer, fmt.Errorf("VirGL resource %d transfer backing range %d..%d exceeds %d bytes",
-			transfer.ResourceID, transfer.Offset, end, transfer.Backing.Size())
-	}
-
+func prepareTransferFromHost(description virtio.GPUResource3D, transfer virtio.GPUTransfer3D) (int, virtio.GPUTransfer3D, error) {
 	packedSize := uint64(transfer.Box.Width)
-	packedLayer := packedSize
+	span := packedSize
+	normalized := transfer
 	if description.Target != 0 {
 		layout, err := describeTextureTransfer(description, transfer)
 		if err != nil {
-			return nil, transfer, err
+			return 0, transfer, err
 		}
 		packedSize = layout.packedSize
-		packedLayer = layout.packedLayer
+		span = layout.span
+		normalized.Stride = uint32(layout.rowBytes)
+		normalized.LayerStride = uint32(layout.packedLayer)
+	}
+	end := transfer.Offset + span
+	backingSize := transfer.Backing.Size()
+	if end < transfer.Offset || end > backingSize {
+		return 0, transfer, fmt.Errorf("VirGL resource %d transfer backing range %d..%d exceeds %d bytes",
+			transfer.ResourceID, transfer.Offset, end, backingSize)
 	}
 	if packedSize > maxResourceBytes {
-		return nil, transfer, fmt.Errorf("VirGL resource %d packed transfer is %d bytes, limit is %d",
+		return 0, transfer, fmt.Errorf("VirGL resource %d packed transfer is %d bytes, limit is %d",
 			transfer.ResourceID, packedSize, maxResourceBytes)
 	}
-	data := make([]byte, int(packedSize))
-	transfer.Offset = 0
-	if description.Target != 0 {
-		transfer.Stride = transfer.Box.Width * uint32(textureFormatBytes(description.Format))
-		transfer.LayerStride = uint32(packedLayer)
-	}
-	return data, transfer, nil
+	normalized.Offset = 0
+	return int(packedSize), normalized, nil
 }
 
 func commitTransferFromHost(description virtio.GPUResource3D, transfer virtio.GPUTransfer3D, data []byte) error {
@@ -391,6 +402,19 @@ func commitTransferFromHost(description virtio.GPUResource3D, transfer virtio.GP
 	layout, err := describeTextureTransfer(description, transfer)
 	if err != nil {
 		return err
+	}
+	if layout.stride == layout.rowBytes {
+		if transfer.Box.Depth <= 1 || layout.layerStride == layout.packedLayer {
+			return transfer.Backing.WriteAt(transfer.Offset, data)
+		}
+		for layer := uint32(0); layer < transfer.Box.Depth; layer++ {
+			source := uint64(layer) * layout.packedLayer
+			destination := transfer.Offset + uint64(layer)*layout.layerStride
+			if err := transfer.Backing.WriteAt(destination, data[int(source):int(source+layout.packedLayer)]); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	for layer := uint32(0); layer < transfer.Box.Depth; layer++ {
 		for row := uint32(0); row < transfer.Box.Height; row++ {
@@ -421,11 +445,18 @@ func (r *Renderer) Submit(contextID uint32, stream []byte) error {
 }
 
 func (r *Renderer) ReadScanout(resourceID uint32, rect image.Rectangle) ([]byte, int, error) {
+	return r.ReadScanoutInto(resourceID, rect, nil)
+}
+
+func (r *Renderer) ReadScanoutInto(resourceID uint32, rect image.Rectangle, pixels []byte) ([]byte, int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	resource := r.resources[resourceID]
 	if resource == nil {
 		return nil, 0, fmt.Errorf("unknown VirGL scanout resource %d", resourceID)
+	}
+	if host, ok := r.host.(scanoutReadbackHost); ok {
+		return host.readScanoutInto(resource, rect, pixels)
 	}
 	return r.host.readScanout(resource, rect)
 }
@@ -454,6 +485,7 @@ func (r *Renderer) Reset() {
 	defer r.mu.Unlock()
 	r.contexts = make(map[uint32]*context)
 	r.resources = make(map[uint32]*resource)
+	r.transferPixels = nil
 	if r.host != nil {
 		_ = r.host.reset()
 	}
@@ -462,6 +494,7 @@ func (r *Renderer) Reset() {
 func (r *Renderer) Close() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.transferPixels = nil
 	if r.host == nil {
 		return nil
 	}

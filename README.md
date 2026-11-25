@@ -49,6 +49,11 @@ initial window. See the [integration guide](docs/headless.md) and
 [OpenAPI contract](docs/headless.openapi.json) for image/kernel progress, VM
 parameters, native Glass windows, and graceful shutdown.
 
+With acceleration enabled on Windows amd64, Neurodesktop tries direct DRI3 for
+eligible CVMFS tool containers. The launcher checks hardware GLX inside the
+container and keeps the image's VirGL compatibility launcher available. Set
+`LIBGL_DRI3_DISABLE=1` for a tool launch to use the compatibility path.
+
 ## Checks and releases
 
 Commit CI runs focused product/runtime tests, native Darwin GPU tests, and builds
